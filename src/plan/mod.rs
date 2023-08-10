@@ -4,6 +4,9 @@ use thiserror::Error;
 mod config;
 mod graph;
 
+pub use config::*;
+pub use graph::*;
+
 #[derive(Error, Debug)]
 pub enum PlanError {
     #[error("No recipe exists with the name `{0}`")]

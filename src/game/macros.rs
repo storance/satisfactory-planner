@@ -13,8 +13,8 @@ macro_rules! item_definition {
             ),+
         });
 
-        impl $type_name {
-            pub fn display_name(&self) -> &str {
+        impl ResourceDefinition for $type_name {
+            fn display_name(&self) -> &str {
                 match self {
                     $(
                         $type_name::$name => $crate::item_helper!(@display_name $name($($item_args)+))
@@ -22,7 +22,7 @@ macro_rules! item_definition {
                 }
             }
 
-            pub fn is_raw(&self) -> bool {
+            fn is_raw(&self) -> bool {
                 match self {
                     $(
                         $type_name::$name => $crate::item_helper!(@raw $name($($item_args)+))
@@ -30,7 +30,15 @@ macro_rules! item_definition {
                 }
             }
 
-            pub fn from_str(value: &str) -> Option<$type_name> {
+            fn sink_points(&self) -> Option<u32> {
+                match self {
+                    $(
+                        $type_name::$name => $crate::item_helper!(@sink_points $name($($item_args)+))
+                    ),+
+                }
+            }
+
+            fn from_str(value: &str) -> Option<$type_name> where Self: Sized {
                 match value {
                     $(
                         $crate::item_helper!(@display_name $name($($item_args)+)) => Some($type_name::$name)
@@ -64,20 +72,50 @@ macro_rules! item_helper {
             ),+
         }
     };
+    // Display Name
     (
-        @display_name $name: ident(name: $display_name:literal $($ignore:tt)*)
+        @display_name $name: ident(name: $display_name:literal $(, $($t:tt)*)?)
     ) => {
         $display_name
     };
     (
-        @raw $name: ident(name: $display_name:literal)
+        @display_name $name: ident($field_name:ident $(: $value:literal)?, $($t:tt),*)
+    ) => {
+        $crate::item_helper!(@display_name $name($($t),*))
+    };
+
+    // Raw
+    (
+        @raw $name: ident()
     ) => {
         false
     };
     (
-        @raw $name: ident(name: $display_name:literal, raw)
+        @raw $name: ident(raw $(, $($t:tt)*)?)
     ) => {
         true
+    };
+    (
+        @raw $name: ident($field_name:ident $(: $value:literal)? $(, $($t:tt)*)?)
+    ) => {
+        $crate::item_helper!(@raw $name($($($t)*)?))
+    };
+
+    // Sink Points
+    (
+        @sink_points $name: ident(sink_points: $value:literal $(, $($t:tt)*)?)
+    ) => {
+        Some($value)
+    };
+    (
+        @sink_points $name: ident($field_name:ident $(: $value:literal)? $(, $($t:tt)*)?)
+    ) => {
+        $crate::item_helper!(@sink_points $name($($($t)*)?))
+    };
+    (
+        @sink_points $name: ident()
+    ) => {
+        None
     };
 }
 
@@ -171,12 +209,12 @@ macro_rules! machine_helper {
     };
 
     (
-        @display_name $name: ident($field_name:ident: $($value:tt)*, $($t:tt),*)
+        @display_name $name: ident($field_name:ident: $value:literal, $($t:tt),*)
     ) => {
         $crate::machine_helper!(@display_name $name($($t),*))
     };
     (
-        @display_name $name: ident($field_name:ident: $($value:tt)*, $($t:tt),*)
+        @display_name $name: ident($field_name:ident: [$($value:tt),*], $($t:tt),*)
     ) => {
         $crate::machine_helper!(@display_name $name($($t)*))
     };
@@ -197,14 +235,13 @@ macro_rules! machine_helper {
     ) => {
         $crate::machine_helper!(@min_power $name($($t)*))
     };
-
     (
         @min_power $name: ident($field_name:ident: [$($value:tt),*], $($t:tt)*)
     ) => {
         $crate::machine_helper!(@min_power $name($($t)*))
     };
 
-    // Max Name
+    // Max Power
     (
         @max_power $name: ident(max_power: $max_power:literal $(, $($t:tt)*)?)
     ) => {
@@ -220,7 +257,6 @@ macro_rules! machine_helper {
     ) => {
         $crate::machine_helper!(@max_power $name($($t)*))
     };
-
     (
         @max_power $name: ident($field_name:ident: [$($value:tt),*], $($t:tt)*)
     ) => {

@@ -58,27 +58,27 @@ impl<'a> PlanGraphNode<'a> {
         }
     }
 
-    pub fn new_input(item: ResourceValuePair<f64>) -> Rc<Self> {
-        Rc::new(PlanGraphNode::InputNode {
+    pub fn new_input(item: ResourceValuePair<f64>) -> NodeType<'a> {
+        Rc::new(RefCell::new(PlanGraphNode::InputNode {
             id: NodeID::new(),
             item,
-        })
+        }))
     }
 
-    pub fn new_output(item: ResourceValuePair<f64>, by_product: bool) -> Rc<Self> {
-        Rc::new(PlanGraphNode::OutputNode {
+    pub fn new_output(item: ResourceValuePair<f64>, by_product: bool) -> NodeType<'a> {
+        Rc::new(RefCell::new(PlanGraphNode::OutputNode {
             id: NodeID::new(),
             item,
             by_product,
-        })
+        }))
     }
 
-    pub fn new_production(recipe: &'a Recipe, machine_count: f64) -> Rc<Self> {
-        Rc::new(PlanGraphNode::ProductionNode {
+    pub fn new_production(recipe: &'a Recipe, machine_count: f64) -> NodeType<'a> {
+        Rc::new(RefCell::new(PlanGraphNode::ProductionNode {
             id: NodeID::new(),
             recipe,
             machine_count,
-        })
+        }))
     }
 
     pub fn is_input(&self) -> bool {
@@ -104,6 +104,14 @@ impl<'a> PlanGraphNode<'a> {
 }
 
 impl<'a> PlanGraph<'a> {
+    pub fn new() -> Self {
+        Self {
+            nodes : Vec::new(),
+            edges_by_parent: HashMap::new(),
+            edges_by_child : HashMap::new(),
+        }
+    }
+
     pub fn add_node(&mut self, node: NodeType<'a>) {
         self.nodes.push(node);
     }
@@ -111,6 +119,14 @@ impl<'a> PlanGraph<'a> {
     pub fn add_edge(&mut self, parent: NodeType<'a>, child: NodeType<'a>) {
         let child_id = child.borrow().id().clone();
         let parent_id = parent.borrow().id().clone();
+
+        if self.find(|node| *node.borrow().id() == child_id).is_none() {
+            self.add_node(Rc::clone(&child));
+        }
+
+        if self.find(|node| *node.borrow().id() == parent_id).is_none() {
+            self.add_node(Rc::clone(&parent));
+        }
 
         self.edges_by_child
             .entry(child_id)
@@ -192,5 +208,10 @@ impl<'a> PlanGraph<'a> {
                 break;
             }
         }
+    }
+
+    pub fn find<F>(&self, mut predicate: F) -> Option<NodeType<'a>>
+        where F:FnMut(&&NodeType<'a>) -> bool {
+        self.nodes.iter().find(predicate).map(Rc::clone)
     }
 }

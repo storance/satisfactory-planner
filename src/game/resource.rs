@@ -2,7 +2,7 @@ use serde::de::{Error, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 
-use crate::game::{Fluid, Item};
+use crate::game::{Fluid, Item, ResourceDefinition};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize)]
 pub enum Resource {
@@ -45,19 +45,31 @@ impl<'de> Visitor<'de> for ResourceVisitor {
     }
 }
 
-impl Resource {
-    pub fn display_name(&self) -> &str {
+impl ResourceDefinition for Resource {
+    fn display_name(&self) -> &str {
         match self {
             Resource::Item(item) => item.display_name(),
             Resource::Fluid(fluid) => fluid.display_name(),
         }
     }
 
-    pub fn is_raw(&self) -> bool {
+    fn is_raw(&self) -> bool {
         match self {
             Resource::Item(item) => item.is_raw(),
             Resource::Fluid(fluid) => fluid.is_raw(),
         }
+    }
+
+    fn sink_points(&self) -> Option<u32> {
+        match self {
+            Resource::Item(item) => item.sink_points(),
+            Resource::Fluid(fluid) => fluid.sink_points(),
+        }
+    }
+
+    fn from_str(value: &str) -> Option<Self> {
+        Item::from_str(value).map(Resource::Item)
+            .or_else(|| Fluid::from_str(value).map(Resource::Fluid))
     }
 }
 

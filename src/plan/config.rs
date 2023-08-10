@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
+use std::rc::Rc;
 
-use crate::game::{Fluid, Item, Recipe, Resource, ResourceValuePair};
-use crate::plan::PlanError;
+use crate::game::{Fluid, Item, Recipe, Resource, ResourceDefinition, ResourceValuePair};
+use crate::plan::{NodeType, PlanError, PlanGraph, PlanGraphNode};
 
 const DEFAULT_LIMITS: [ResourceValuePair<f64>; 12] = [
     ResourceValuePair::for_item(Item::Bauxite, 9780.0),
@@ -105,5 +106,29 @@ impl<'a> PlanConfig<'a> {
             recipes,
             input_limits,
         })
+    }
+
+    pub fn build_graph(&self) -> PlanGraph {
+        let mut graph = PlanGraph::new();
+        let mut output_nodes = Vec::new();
+
+        let mut recipes_by_output: HashMap<Resource, Vec<&Recipe>> = HashMap::new();
+        for recipe in &self.recipes {
+            for output in &recipe.outputs_amounts {
+                recipes_by_output.entry(output.resource)
+                    .and_modify(|recipes| recipes.push(*recipe))
+                    .or_insert_with(|| vec![*recipe]);
+            }
+        }
+
+        self.outputs.iter().for_each(|output| {
+            let output_node = PlanGraphNode::new_output(*output, false);
+            output_nodes.push(Rc::clone(&output_node));
+            graph.add_node(output_node);
+        });
+
+
+
+        graph
     }
 }

@@ -5,7 +5,7 @@ use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
-use crate::game::{Fluid, Item, Resource};
+use crate::game::{Fluid, Item, Resource, ResourceDefinition};
 
 #[derive(Debug, Copy, Clone)]
 pub struct ResourceValuePair<V: Debug + Copy + Clone> {

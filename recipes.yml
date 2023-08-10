@@ -5,7 +5,7 @@ recipes:
       - Iron Ore: 1
     outputs:
       - Iron Ingot: 1
-    production_time_secs: 2
+    craft_time: 2
     machine: Smelter
   - name: Iron Alloy Ingot
     inputs:
@@ -13,7 +13,7 @@ recipes:
       - Copper Ore: 2
     outputs:
       - Iron Ingot: 5
-    production_time_secs: 6
+    craft_time: 6
     machine: Foundry
   - name: Pure Iron Ingot
     alternative: true
@@ -22,7 +22,7 @@ recipes:
       - Water: 4
     outputs:
       - Iron Ingot: 13
-    production_time_secs: 12
+    craft_time: 12
     machine: Refinery
   # Copper Ingot Recipes
   - name: Copper Ingot
@@ -30,7 +30,7 @@ recipes:
       - Copper Ore: 1
     outputs:
       - Copper Ingot: 1
-    production_time_secs: 2
+    craft_time: 2
     machine: Smelter
   - name: Copper Alloy Ingot
     inputs:
@@ -38,7 +38,7 @@ recipes:
       - Iron Ore: 5
     outputs:
       - Copper Ingot: 20
-    production_time_secs: 12
+    craft_time: 12
     machine: Foundry
   - name: Pure Copper Ingot
     alternative: true
@@ -47,7 +47,7 @@ recipes:
       - Water: 4
     outputs:
       - Iron Ingot: 15
-    production_time_secs: 24
+    craft_time: 24
     machine: Refinery
   # Iron Plate Recipes
   - name: Iron Plate
@@ -55,7 +55,7 @@ recipes:
       - Iron Ingot: 3
     outputs:
       - Iron Plate: 2
-    production_time_secs: 6
+    craft_time: 6
     machine: Constructor
   # Iron Rod Recipes
   - name: Iron Rod
@@ -63,7 +63,7 @@ recipes:
       - Iron Ingot: 1
     outputs:
       - Iron Plate: 1
-    production_time_secs: 4
+    craft_time: 4
     machine: Constructor
   # Wire Recipes
   - name: Wire
@@ -71,7 +71,7 @@ recipes:
       - Copper Ingot: 1
     outputs:
       - Wire: 2
-    production_time_secs: 4
+    craft_time: 4
     machine: Constructor
   # Cable Recipes
   - name: Cable
@@ -79,7 +79,7 @@ recipes:
       - Wire: 2
     outputs:
       - Cable: 1
-    production_time_secs: 1
+    craft_time: 1
     machine: Constructor
   # Copper Sheet Recipes
   - name: Copper Sheet
@@ -87,7 +87,7 @@ recipes:
       - Copper Ingot: 2
     outputs:
       - Copper Sheet: 1
-    production_time_secs: 6
+    craft_time: 6
     machine: Constructor
   - name: Steamed Copper Sheet
     inputs:
@@ -95,5 +95,5 @@ recipes:
       - Water: 3
     outputs:
       - Copper Sheet: 3
-    production_time_secs: 8
+    craft_time: 8
     machine: Refinery

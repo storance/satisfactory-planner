@@ -27,6 +27,10 @@ impl MachineIO {
     pub fn new(items: u8, fluids: u8) -> Self {
         Self { items, fluids }
     }
+
+    pub fn zero() -> Self {
+         Self::new(0, 0)
+    }
 }
 const ITEM: [&str; 1] = ["Item"];
 const FLUID: [&str; 1] = ["Fluid"];
