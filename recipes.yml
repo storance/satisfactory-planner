@@ -62,7 +62,7 @@ recipes:
     inputs:
       - Iron Ingot: 1
     outputs:
-      - Iron Plate: 1
+      - Iron Rod: 1
     craft_time: 4
     machine: Constructor
   # Wire Recipes
@@ -90,6 +90,7 @@ recipes:
     craft_time: 6
     machine: Constructor
   - name: Steamed Copper Sheet
+    alternative: true
     inputs:
       - Copper Ingot: 3
       - Water: 3
@@ -97,3 +98,45 @@ recipes:
       - Copper Sheet: 3
     craft_time: 8
     machine: Refinery
+  # Screws
+  - name: Screw
+    inputs:
+      - Iron Rod: 1
+    outputs:
+      - Screw: 4
+    craft_time: 6
+    machine: Constructor
+  - name: Casted Screw
+    alternative: true
+    inputs:
+      - Iron Ingot: 5
+    outputs:
+      - Screw: 20
+    craft_time: 24
+    machine: Constructor
+  - name: Steel Screw
+    alternative: true
+    inputs:
+      - Steel Beam: 1
+    outputs:
+      - Screw: 52
+    craft_time: 12
+    machine: Constructor
+  # Reinforced Iron Plate
+  - name: Reinforced Iron Plate
+    inputs:
+      - Iron Plate: 6
+      - Screw: 12
+    outputs:
+      - Reinforced Iron Plate: 1
+    craft_time: 12
+    machine: Assembler
+  - name: Stitched Iron Plate
+    alternative: true
+    inputs:
+      - Iron Plate: 10
+      - Wire: 20
+    outputs:
+      - Reinforced Iron Plate: 3
+    craft_time: 32
+    machine: Assembler

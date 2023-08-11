@@ -1,19 +1,38 @@
-use serde::de::{Error, MapAccess, Visitor};
+use serde::de::{MapAccess, Visitor};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
+use std::ops::Add;
 
-use crate::game::{Fluid, Item, Resource, ResourceDefinition};
+use crate::game::{Fluid, Item, Resource, ResourceDefinition, RecipeResource};
 
-#[derive(Debug, Copy, Clone)]
-pub struct ResourceValuePair<V: Debug + Copy + Clone> {
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct ResourceValuePair<V: Debug + Copy + Clone + PartialEq> {
     pub resource: Resource,
     pub value: V,
 }
 
-impl<V: Debug + Copy + Clone> ResourceValuePair<V> {
+impl From<RecipeResource> for ResourceValuePair<f64> {
+    fn from(value: RecipeResource) -> Self {
+        Self {
+            resource: value.resource,
+            value: value.amount_per_minute
+        }
+    }
+}
+
+impl From<RecipeResource> for ResourceValuePair<u32> {
+    fn from(value: RecipeResource) -> Self {
+        Self {
+            resource: value.resource,
+            value: value.amount
+        }
+    }
+}
+
+impl<V: Debug + Copy + Clone + PartialEq> ResourceValuePair<V> {
     pub const fn new(resource: Resource, value: V) -> Self {
         Self { resource, value }
     }
@@ -37,13 +56,24 @@ impl<V: Debug + Copy + Clone> ResourceValuePair<V> {
     }
 }
 
-impl<V: fmt::Display + Debug + Copy + Clone> fmt::Display for ResourceValuePair<V> {
+impl<V: Debug + Copy + Clone + PartialEq + Add<Output = V>> Add<V> for ResourceValuePair<V> {
+    type Output = Self;
+
+    fn add(self, rhs: V) -> Self::Output {
+        Self {
+            resource: self.resource,
+            value: self.value + rhs
+        }
+    }
+}
+
+impl<V: fmt::Display + Debug + Copy + Clone + PartialEq> fmt::Display for ResourceValuePair<V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.resource.display_name(), self.value)
     }
 }
 
-impl<V: Serialize + Debug + Copy + Clone> Serialize for ResourceValuePair<V> {
+impl<V: Serialize + Debug + Copy + Clone + PartialEq> Serialize for ResourceValuePair<V> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -54,7 +84,7 @@ impl<V: Serialize + Debug + Copy + Clone> Serialize for ResourceValuePair<V> {
     }
 }
 
-impl<'de, V: Deserialize<'de> + Debug + Copy + Clone> Deserialize<'de> for ResourceValuePair<V> {
+impl<'de, V: Deserialize<'de> + Debug + Copy + Clone + PartialEq> Deserialize<'de> for ResourceValuePair<V> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -65,11 +95,11 @@ impl<'de, V: Deserialize<'de> + Debug + Copy + Clone> Deserialize<'de> for Resou
     }
 }
 
-struct ItemValuePairVisitor<V: Debug + Copy + Clone> {
+struct ItemValuePairVisitor<V: Debug + Copy + Clone + PartialEq> {
     phantom: PhantomData<V>,
 }
 
-impl<'de, V: Deserialize<'de> + Debug + Copy + Clone> Visitor<'de> for ItemValuePairVisitor<V> {
+impl<'de, V: Deserialize<'de> + Debug + Copy + Clone + PartialEq> Visitor<'de> for ItemValuePairVisitor<V> {
     type Value = ResourceValuePair<V>;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -91,7 +121,7 @@ impl<'de, V: Deserialize<'de> + Debug + Copy + Clone> Visitor<'de> for ItemValue
     }
 }
 
-impl<V: Debug + Copy + Clone> From<(Resource, V)> for ResourceValuePair<V> {
+impl<V: Debug + Copy + Clone + PartialEq> From<(Resource, V)> for ResourceValuePair<V> {
     fn from(value: (Resource, V)) -> Self {
         Self {
             resource: value.0,

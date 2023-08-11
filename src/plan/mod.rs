@@ -3,9 +3,11 @@ use thiserror::Error;
 
 mod config;
 mod graph;
+mod solver;
 
 pub use config::*;
 pub use graph::*;
+pub use solver::*;
 
 #[derive(Error, Debug)]
 pub enum PlanError {

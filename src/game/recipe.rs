@@ -22,14 +22,37 @@ struct RecipesDefinition {
     pub recipes: Vec<RecipeDefinition>,
 }
 
+#[derive(Debug, Copy, Clone)]
+pub struct RecipeResource {
+    pub resource: Resource,
+    pub amount: u32,
+    pub amount_per_minute: f64
+}
+
+impl RecipeResource {
+    pub fn new(resource: Resource, amount: u32, amount_per_minute: f64) -> Self {
+        Self {
+            resource,
+            amount,
+            amount_per_minute
+        }
+    }
+
+    pub fn from(rv: &ResourceValuePair<u32>, crafts_per_minute: f64) -> Self {
+        Self {
+            resource: rv.resource,
+            amount: rv.value,
+            amount_per_minute: rv.value as f64 * crafts_per_minute
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Recipe {
     pub name: String,
     pub alternate: bool,
-    pub outputs_amounts: Vec<ResourceValuePair<u32>>,
-    pub outputs_per_min: Vec<ResourceValuePair<f64>>,
-    pub inputs_amounts: Vec<ResourceValuePair<u32>>,
-    pub inputs_per_min: Vec<ResourceValuePair<f64>>,
+    pub outputs: Vec<RecipeResource>,
+    pub inputs: Vec<RecipeResource>,
     pub craft_time: u32,
     pub power_multiplier: f32,
     pub machine: Machine,
@@ -123,26 +146,38 @@ impl Recipe {
     pub fn calc_avg_power(&self) -> f32 {
         (self.calc_min_power() + self.calc_max_power()) / 2.0
     }
+
+    pub fn find_input_by_item(&self, resource: Resource) -> Option<&RecipeResource> {
+        self.inputs.iter().find(|output| output.resource == resource)
+    }
+
+    pub fn find_output_by_item(&self, resource: Resource) -> Option<&RecipeResource> {
+        self.outputs.iter().find(|output| output.resource == resource)
+    }
+}
+
+impl PartialEq for Recipe {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
 }
 
 impl From<RecipeDefinition> for Recipe {
     fn from(recipe: RecipeDefinition) -> Self {
         let crafts_per_min = 60.0 / recipe.craft_time as f64;
 
-        let inputs_per_min = recipe.inputs.iter()
-            .map(|rv| ResourceValuePair::new(rv.resource, rv.value as f64 * crafts_per_min))
+        let inputs = recipe.inputs.iter()
+            .map(|rv| RecipeResource::from(rv, crafts_per_min))
             .collect();
-        let outputs_per_min = recipe.inputs.iter()
-            .map(|rv| ResourceValuePair::new(rv.resource, rv.value as f64 * crafts_per_min))
+        let outputs = recipe.outputs.iter()
+            .map(|rv| RecipeResource::from(rv, crafts_per_min))
             .collect();
 
         Self {
             name: recipe.name,
             alternate: recipe.alternate,
-            outputs_amounts: recipe.outputs,
-            outputs_per_min,
-            inputs_amounts: recipe.inputs,
-            inputs_per_min,
+            outputs,
+            inputs,
             craft_time: recipe.craft_time,
             power_multiplier: recipe.power_multiplier,
             machine: recipe.machine

@@ -32,8 +32,6 @@ impl MachineIO {
          Self::new(0, 0)
     }
 }
-const ITEM: [&str; 1] = ["Item"];
-const FLUID: [&str; 1] = ["Fluid"];
 
 impl fmt::Display for MachineIO {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

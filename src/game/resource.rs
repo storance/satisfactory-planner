@@ -1,5 +1,5 @@
-use serde::de::{Error, MapAccess, Visitor};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::de::{Error, Visitor};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt;
 
 use crate::game::{Fluid, Item, ResourceDefinition};

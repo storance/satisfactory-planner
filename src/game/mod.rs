@@ -6,11 +6,10 @@ pub mod recipe;
 pub mod resource;
 pub mod resource_value_pair;
 
-use std::fmt;
 pub use fluid::Fluid;
 pub use item::Item;
 pub use machine::{Machine, MachineIO};
-pub use recipe::Recipe;
+pub use recipe::{Recipe, RecipeResource};
 pub use resource::Resource;
 pub use resource_value_pair::ResourceValuePair;
 
