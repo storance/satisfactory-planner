@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::Add;
 
-use crate::game::{Fluid, Item, Resource, ResourceDefinition, RecipeResource};
+use crate::game::{Fluid, Item, RecipeResource, Resource, ResourceDefinition};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct ResourceValuePair<V: Debug + Copy + Clone + PartialEq> {
@@ -18,7 +18,7 @@ impl From<RecipeResource> for ResourceValuePair<f64> {
     fn from(value: RecipeResource) -> Self {
         Self {
             resource: value.resource,
-            value: value.amount_per_minute
+            value: value.amount_per_minute,
         }
     }
 }
@@ -27,7 +27,7 @@ impl From<RecipeResource> for ResourceValuePair<u32> {
     fn from(value: RecipeResource) -> Self {
         Self {
             resource: value.resource,
-            value: value.amount
+            value: value.amount,
         }
     }
 }
@@ -62,7 +62,7 @@ impl<V: Debug + Copy + Clone + PartialEq + Add<Output = V>> Add<V> for ResourceV
     fn add(self, rhs: V) -> Self::Output {
         Self {
             resource: self.resource,
-            value: self.value + rhs
+            value: self.value + rhs,
         }
     }
 }
@@ -84,7 +84,9 @@ impl<V: Serialize + Debug + Copy + Clone + PartialEq> Serialize for ResourceValu
     }
 }
 
-impl<'de, V: Deserialize<'de> + Debug + Copy + Clone + PartialEq> Deserialize<'de> for ResourceValuePair<V> {
+impl<'de, V: Deserialize<'de> + Debug + Copy + Clone + PartialEq> Deserialize<'de>
+    for ResourceValuePair<V>
+{
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -99,7 +101,9 @@ struct ItemValuePairVisitor<V: Debug + Copy + Clone + PartialEq> {
     phantom: PhantomData<V>,
 }
 
-impl<'de, V: Deserialize<'de> + Debug + Copy + Clone + PartialEq> Visitor<'de> for ItemValuePairVisitor<V> {
+impl<'de, V: Deserialize<'de> + Debug + Copy + Clone + PartialEq> Visitor<'de>
+    for ItemValuePairVisitor<V>
+{
     type Value = ResourceValuePair<V>;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {

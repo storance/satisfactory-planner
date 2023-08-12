@@ -1,7 +1,7 @@
 use crate::machine_definition;
 use serde::{Deserialize, Serialize};
-use std::{fmt, iter};
 use std::fmt::Formatter;
+use std::{fmt, iter};
 
 machine_definition!(
     Machine {
@@ -29,7 +29,7 @@ impl MachineIO {
     }
 
     pub fn zero() -> Self {
-         Self::new(0, 0)
+        Self::new(0, 0)
     }
 }
 
@@ -38,8 +38,13 @@ impl fmt::Display for MachineIO {
         let item_part = iter::repeat("Item").take(self.items as usize);
         let fluid_part = iter::repeat("Fluid").take(self.fluids as usize);
 
-        let formatted_str = item_part.chain(fluid_part)
-            .fold(String::new(), |a, b| if a.is_empty() { a + b } else { a + ", " + b });
+        let formatted_str = item_part.chain(fluid_part).fold(String::new(), |a, b| {
+            if a.is_empty() {
+                a + b
+            } else {
+                a + ", " + b
+            }
+        });
 
         write!(f, "[{}]", formatted_str)
     }

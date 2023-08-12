@@ -26,7 +26,7 @@ struct RecipesDefinition {
 pub struct RecipeResource {
     pub resource: Resource,
     pub amount: u32,
-    pub amount_per_minute: f64
+    pub amount_per_minute: f64,
 }
 
 impl RecipeResource {
@@ -34,7 +34,7 @@ impl RecipeResource {
         Self {
             resource,
             amount,
-            amount_per_minute
+            amount_per_minute,
         }
     }
 
@@ -42,7 +42,7 @@ impl RecipeResource {
         Self {
             resource: rv.resource,
             amount: rv.value,
-            amount_per_minute: rv.value as f64 * crafts_per_minute
+            amount_per_minute: rv.value as f64 * crafts_per_minute,
         }
     }
 }
@@ -89,7 +89,7 @@ impl Recipe {
         let file = File::open(file_path)?;
         let config: RecipesDefinition = serde_yaml::from_reader(file)?;
 
-        let mut recipes : Vec<Recipe> = Vec::with_capacity(config.recipes.len());
+        let mut recipes: Vec<Recipe> = Vec::with_capacity(config.recipes.len());
         for recipe in config.recipes {
             let inputs_count = recipe.inputs.iter().fold(MachineIO::zero(), |mut acc, rv| {
                 match rv.resource {
@@ -100,33 +100,44 @@ impl Recipe {
                 acc
             });
 
-            let outputs_count = recipe.outputs.iter().fold(MachineIO::zero(), |mut acc, rv| {
-                match rv.resource {
-                    Resource::Item(..) => acc.items += 1,
-                    Resource::Fluid(..) => acc.fluids += 1,
-                }
+            let outputs_count = recipe
+                .outputs
+                .iter()
+                .fold(MachineIO::zero(), |mut acc, rv| {
+                    match rv.resource {
+                        Resource::Item(..) => acc.items += 1,
+                        Resource::Fluid(..) => acc.fluids += 1,
+                    }
 
-                acc
-            });
+                    acc
+                });
 
             if inputs_count.items + inputs_count.fluids == 0 {
-                return Err(RecipeError::MissingInputs(recipe.name))
+                return Err(RecipeError::MissingInputs(recipe.name));
             }
 
             if outputs_count.items + outputs_count.fluids == 0 {
-                return Err(RecipeError::MissingOutputs(recipe.name))
+                return Err(RecipeError::MissingOutputs(recipe.name));
             }
 
             if is_max_ports_exceeded(recipe.machine.input_ports(), inputs_count) {
-                return Err(RecipeError::InvalidInputs(recipe.name, recipe.machine, inputs_count))
+                return Err(RecipeError::InvalidInputs(
+                    recipe.name,
+                    recipe.machine,
+                    inputs_count,
+                ));
             }
 
             if is_max_ports_exceeded(recipe.machine.output_ports(), outputs_count) {
-                return Err(RecipeError::InvalidOutputs(recipe.name,recipe.machine, outputs_count))
+                return Err(RecipeError::InvalidOutputs(
+                    recipe.name,
+                    recipe.machine,
+                    outputs_count,
+                ));
             }
 
             if let Some(..) = recipes.iter().find(|r| r.name == recipe.name) {
-               return Err(RecipeError::DuplicateRecipeName(recipe.name));
+                return Err(RecipeError::DuplicateRecipeName(recipe.name));
             }
 
             recipes.push(Self::from(recipe));
@@ -148,11 +159,15 @@ impl Recipe {
     }
 
     pub fn find_input_by_item(&self, resource: Resource) -> Option<&RecipeResource> {
-        self.inputs.iter().find(|output| output.resource == resource)
+        self.inputs
+            .iter()
+            .find(|output| output.resource == resource)
     }
 
     pub fn find_output_by_item(&self, resource: Resource) -> Option<&RecipeResource> {
-        self.outputs.iter().find(|output| output.resource == resource)
+        self.outputs
+            .iter()
+            .find(|output| output.resource == resource)
     }
 }
 
@@ -166,10 +181,14 @@ impl From<RecipeDefinition> for Recipe {
     fn from(recipe: RecipeDefinition) -> Self {
         let crafts_per_min = 60.0 / recipe.craft_time as f64;
 
-        let inputs = recipe.inputs.iter()
+        let inputs = recipe
+            .inputs
+            .iter()
             .map(|rv| RecipeResource::from(rv, crafts_per_min))
             .collect();
-        let outputs = recipe.outputs.iter()
+        let outputs = recipe
+            .outputs
+            .iter()
             .map(|rv| RecipeResource::from(rv, crafts_per_min))
             .collect();
 
@@ -180,7 +199,7 @@ impl From<RecipeDefinition> for Recipe {
             inputs,
             craft_time: recipe.craft_time,
             power_multiplier: recipe.power_multiplier,
-            machine: recipe.machine
+            machine: recipe.machine,
         }
     }
 }

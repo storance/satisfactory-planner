@@ -106,4 +106,14 @@ impl<'a> PlanConfig<'a> {
             input_limits,
         })
     }
+
+    pub fn find_input_by_resource(&self, resource: Resource) -> Option<&ResourceValuePair<f64>> {
+        self.inputs.iter().find(|input| input.resource == resource)
+    }
+
+    pub fn find_output_by_resource(&self, resource: Resource) -> Option<&ResourceValuePair<f64>> {
+        self.outputs
+            .iter()
+            .find(|output| output.resource == resource)
+    }
 }

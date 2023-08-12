@@ -1,5 +1,5 @@
-use crate::item_definition;
 use crate::game::ResourceDefinition;
+use crate::item_definition;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -29,7 +29,7 @@ item_definition!(
         YellowPowerSlug(name: "Yellow Power Slug"),
         PurplePowerSlug(name: "Purple Power Slug"),
         HogRemains(name: "Hog Remains"),
-        PlasmaSplitterRemains(name: "Plasma Splitter Remains"),
+        PlasmaSpitterRemains(name: "Plasma Spitter Remains"),
         StingerRemains(name: "Stinger Remains"),
         HatcherRemains(name: "Hatcher Remains"),
 

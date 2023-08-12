@@ -1,10 +1,10 @@
+extern crate petgraph;
 extern crate serde;
 extern crate serde_yaml;
 extern crate thiserror;
-extern crate petgraph;
 
-use crate::game::{Item, Fluid, Machine, Recipe, ResourceDefinition};
-use crate::plan::{PlanConfig, solve};
+use crate::game::{Fluid, Item, Machine, Recipe, ResourceDefinition};
+use crate::plan::{solve, PlanConfig};
 use petgraph::dot::Dot;
 
 mod game;
@@ -21,8 +21,6 @@ fn main() {
         panic!("Failed to load plan: {}", e);
     });
 
-
-
     let graph = solve(&plan).unwrap_or_else(|e| {
         panic!("Failed to solve plan: {}", e);
     });
@@ -31,19 +29,23 @@ fn main() {
 }
 
 pub fn print_item(item: Item) {
-    println!("{:?}(display_name: {}, is_raw: {}, sink_points: {:?})",
-             item,
-             item.display_name(),
-             item.is_raw(),
-             item.sink_points())
+    println!(
+        "{:?}(display_name: {}, is_raw: {}, sink_points: {:?})",
+        item,
+        item.display_name(),
+        item.is_raw(),
+        item.sink_points()
+    )
 }
 
 pub fn print_fluid(item: Fluid) {
-    println!("{:?}(display_name: {}, is_raw: {}, sink_points: {:?})",
-             item,
-             item.display_name(),
-             item.is_raw(),
-             item.sink_points())
+    println!(
+        "{:?}(display_name: {}, is_raw: {}, sink_points: {:?})",
+        item,
+        item.display_name(),
+        item.is_raw(),
+        item.sink_points()
+    )
 }
 
 pub fn print_machine(machine: Machine) {

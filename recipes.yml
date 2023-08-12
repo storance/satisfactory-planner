@@ -49,6 +49,80 @@ recipes:
       - Iron Ingot: 15
     craft_time: 24
     machine: Refinery
+  # Alien Protein
+  - name: Hatcher Protein
+    inputs:
+      - Hatcher Remains: 1
+    outputs:
+      - Alien Protein: 1
+    craft_time: 3
+    machine: Constructor
+  - name: Hog Protein
+    inputs:
+      - Hog Remains: 1
+    outputs:
+      - Alien Protein: 1
+    craft_time: 3
+    machine: Constructor
+  - name: Spitter Protein
+    inputs:
+      - Plasma Spitter Remains: 1
+    outputs:
+      - Alien Protein: 1
+    craft_time: 3
+    machine: Constructor
+  - name: Stinger Protein
+    inputs:
+      - Stinger Remains: 1
+    outputs:
+      - Alien Protein: 1
+    craft_time: 3
+    machine: Constructor
+  # Biomass
+  - name: Biomass (Leaves)
+    inputs:
+      - Leaves: 10
+    outputs:
+      - Biomass: 5
+    craft_time: 5
+    machine: Constructor
+  - name: Biomass (Wood)
+    inputs:
+      - Wood: 4
+    outputs:
+      - Biomass: 20
+    craft_time: 4
+    machine: Constructor
+  - name: Biomass (Mycelia)
+    inputs:
+      - Mycelia: 1
+    outputs:
+      - Biomass: 10
+    craft_time: 4
+    machine: Constructor
+  - name: Biomass (Alien Protein)
+    inputs:
+      - Alien Protein: 1
+    outputs:
+      - Biomass: 100
+    craft_time: 4
+    machine: Constructor
+  # Solid Biofuel
+  - name: Solid Biofuel
+    inputs:
+      - Biomass: 8
+    outputs:
+      - Solid Biofuel: 4
+    craft_time: 4
+    machine: Constructor
+  # Color Cartridge
+  - name: Color Cartridge
+    inputs:
+      - Flower Petals: 5
+    outputs:
+      - Color Cartridge: 10
+    craft_time: 6
+    machine: Constructor
   # Iron Plate Recipes
   - name: Iron Plate
     inputs:
@@ -57,6 +131,24 @@ recipes:
       - Iron Plate: 2
     craft_time: 6
     machine: Constructor
+  - name: Coated Iron Plate
+    alternative: true
+    inputs:
+      - Iron Ingot: 10
+      - Plastic: 2
+    outputs:
+      - Iron Plate: 15
+    craft_time: 12
+    machine: Assembler
+  - name: Steel Coated Plate
+    alternative: true
+    inputs:
+      - Steel Ingot: 3
+      - Plastic: 2
+    outputs:
+      - Iron Plate: 18
+    craft_time: 24
+    machine: Assembler
   # Iron Rod Recipes
   - name: Iron Rod
     inputs:
@@ -64,6 +156,14 @@ recipes:
     outputs:
       - Iron Rod: 1
     craft_time: 4
+    machine: Constructor
+  - name: Steel Rod
+    alternative: true
+    inputs:
+      - Steel Ingot: 1
+    outputs:
+      - Iron Rod: 4
+    craft_time: 5
     machine: Constructor
   # Wire Recipes
   - name: Wire
@@ -73,14 +173,66 @@ recipes:
       - Wire: 2
     craft_time: 4
     machine: Constructor
+  - name: Caterium Wire
+    alternative: true
+    inputs:
+      - Caterium Ingot: 1
+    outputs:
+      - Wire: 8
+    craft_time: 4
+    machine: Constructor
+  - name: Fused Wire
+    alternative: true
+    inputs:
+      - Copper Ingot: 4
+      - Caterium Ingot: 1
+    outputs:
+      - Wire: 30
+    craft_time: 20
+    machine: Assembler
+  - name: Iron Wire
+    alternative: true
+    inputs:
+      - Iron Ingot: 5
+    outputs:
+      - Wire: 9
+    craft_time: 24
+    machine: Constructor
   # Cable Recipes
   - name: Cable
     inputs:
       - Wire: 2
     outputs:
       - Cable: 1
-    craft_time: 1
+    craft_time: 2
     machine: Constructor
+  - name: Coated Cable
+    alternative: true
+    inputs:
+      - Wire: 5
+      - Heavy Oil Residue: 2
+    outputs:
+      - Cable: 1
+    craft_time: 8
+    machine: Refinery
+  - name: Insulated Cable
+    alternative: true
+    inputs:
+      - Wire: 9
+      - Rubber: 6
+    outputs:
+      - Cable: 20
+    craft_time: 12
+    machine: Assembler
+  - name: Quickwire Cable
+    alternative: true
+    inputs:
+      - Quickwire: 7
+      - Rubber: 3
+    outputs:
+      - Cable: 11
+    craft_time: 24
+    machine: Assembler
   # Copper Sheet Recipes
   - name: Copper Sheet
     inputs:
@@ -131,6 +283,24 @@ recipes:
       - Reinforced Iron Plate: 1
     craft_time: 12
     machine: Assembler
+  - name: Adhered Iron Plate
+    alternative: true
+    inputs:
+      - Iron Plate: 3
+      - Rubber: 1
+    outputs:
+      - Reinforced Iron Plate: 1
+    craft_time: 16
+    machine: Assembler
+  - name: Bolted Iron Plate
+    alternative: true
+    inputs:
+      - Iron Plate: 18
+      - Screw: 50
+    outputs:
+      - Reinforced Iron Plate: 3
+    craft_time: 12
+    machine: Assembler
   - name: Stitched Iron Plate
     alternative: true
     inputs:
@@ -139,4 +309,58 @@ recipes:
     outputs:
       - Reinforced Iron Plate: 3
     craft_time: 32
+    machine: Assembler
+  # Rotor
+  - name: Rotor
+    inputs:
+      - Iron Rod: 5
+      - Screw: 25
+    outputs:
+      - Rotor: 1
+    craft_time: 15
+    machine: Assembler
+  - name: Copper Rotor
+    alternative: true
+    inputs:
+      - Copper Sheet: 6
+      - Screw: 52
+    outputs:
+      - Rotor: 3
+    craft_time: 16
+    machine: Assembler
+  - name: Steel Rotor
+    alternative: true
+    inputs:
+      - Steel Pipe: 2
+      - Wire: 6
+    outputs:
+      - Rotor: 1
+    craft_time: 12
+    machine: Assembler
+  # Modular Frame
+  - name: Modular Frame
+    inputs:
+      - Reinforced Iron Plate: 3
+      - Iron Rod: 12
+    outputs:
+      - Modular Frame: 2
+    craft_time: 60
+    machine: Assembler
+  - name: Bolted Frame
+    alternative: true
+    inputs:
+      - Reinforced Iron Plate: 3
+      - Screw: 56
+    outputs:
+      - Modular Frame: 2
+    craft_time: 24
+    machine: Assembler
+  - name: Steeled Frame
+    alternative: true
+    inputs:
+      - Reinforced Iron Plate: 2
+      - Steel Pipe: 10
+    outputs:
+      - Modular Frame: 3
+    craft_time: 60
     machine: Assembler

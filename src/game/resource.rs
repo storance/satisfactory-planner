@@ -68,7 +68,8 @@ impl ResourceDefinition for Resource {
     }
 
     fn from_str(value: &str) -> Option<Self> {
-        Item::from_str(value).map(Resource::Item)
+        Item::from_str(value)
+            .map(Resource::Item)
             .or_else(|| Fluid::from_str(value).map(Resource::Fluid))
     }
 }

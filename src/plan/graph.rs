@@ -1,9 +1,9 @@
-use std::fmt;
 use crate::game::{Recipe, Resource, ResourceValuePair};
+use std::fmt;
 
 #[derive(Debug)]
 pub enum PlanGraphNode<'a> {
-    InputNode (ResourceValuePair<f64>),
+    InputNode(ResourceValuePair<f64>),
     OutputNode(ResourceValuePair<f64>, bool),
     ProductionNode(&'a Recipe, f64),
 }
@@ -44,7 +44,7 @@ impl<'a> PlanGraphNode<'a> {
 
     pub fn is_output_for_item(&self, resource: Resource) -> bool {
         match self {
-            PlanGraphNode::OutputNode (resource_value, ..) => resource_value.resource == resource,
+            PlanGraphNode::OutputNode(resource_value, ..) => resource_value.resource == resource,
             _ => false,
         }
     }
@@ -58,23 +58,39 @@ impl<'a> PlanGraphNode<'a> {
 
     pub fn is_production_for_recipe(&self, recipe: &Recipe) -> bool {
         match self {
-            PlanGraphNode::ProductionNode(node_recipe, .. ) => *node_recipe == recipe,
+            PlanGraphNode::ProductionNode(node_recipe, ..) => *node_recipe == recipe,
             _ => false,
         }
     }
 }
 
-impl <'a> fmt::Display for PlanGraphNode<'a> {
+impl<'a> fmt::Display for PlanGraphNode<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PlanGraphNode::InputNode (resource_value) => {
-                write!(f, "{} {} / min", resource_value.resource, round(resource_value.value, 3))
-            },
+            PlanGraphNode::InputNode(resource_value) => {
+                write!(
+                    f,
+                    "{} {} / min",
+                    resource_value.resource,
+                    round(resource_value.value, 3)
+                )
+            }
             PlanGraphNode::ProductionNode(recipe, machine_count, ..) => {
-                write!(f, "{} {:.1}x {}", recipe.name, round(*machine_count, 3), recipe.machine)
-            },
-            PlanGraphNode::OutputNode (resource_value, ..) => {
-                write!(f, "{} {} / min", resource_value.resource, round(resource_value.value, 3))
+                write!(
+                    f,
+                    "{} {}x {}",
+                    recipe.name,
+                    round(*machine_count, 3),
+                    recipe.machine
+                )
+            }
+            PlanGraphNode::OutputNode(resource_value, ..) => {
+                write!(
+                    f,
+                    "{} {} / min",
+                    resource_value.resource,
+                    round(resource_value.value, 3)
+                )
             }
         }
     }

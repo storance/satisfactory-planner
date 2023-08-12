@@ -20,5 +20,7 @@ pub trait ResourceDefinition {
 
     fn sink_points(&self) -> Option<u32>;
 
-    fn from_str(value: &str) -> Option<Self> where Self: Sized;
+    fn from_str(value: &str) -> Option<Self>
+    where
+        Self: Sized;
 }

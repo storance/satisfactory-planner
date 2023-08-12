@@ -1,5 +1,5 @@
-use crate::item_definition;
 use crate::game::ResourceDefinition;
+use crate::item_definition;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
