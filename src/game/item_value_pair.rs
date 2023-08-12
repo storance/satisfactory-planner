@@ -6,86 +6,72 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::Add;
 
-use crate::game::{Fluid, Item, RecipeResource, Resource, ResourceDefinition};
+use crate::game::{Item, RecipeIO};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct ResourceValuePair<V: Debug + Copy + Clone + PartialEq> {
-    pub resource: Resource,
+pub struct ItemValuePair<V: Debug + Copy + Clone + PartialEq> {
+    pub item: Item,
     pub value: V,
 }
 
-impl From<RecipeResource> for ResourceValuePair<f64> {
-    fn from(value: RecipeResource) -> Self {
+impl From<RecipeIO> for ItemValuePair<f64> {
+    fn from(value: RecipeIO) -> Self {
         Self {
-            resource: value.resource,
+            item: value.item,
             value: value.amount_per_minute,
         }
     }
 }
 
-impl From<RecipeResource> for ResourceValuePair<u32> {
-    fn from(value: RecipeResource) -> Self {
+impl From<RecipeIO> for ItemValuePair<u32> {
+    fn from(value: RecipeIO) -> Self {
         Self {
-            resource: value.resource,
+            item: value.item,
             value: value.amount,
         }
     }
 }
 
-impl<V: Debug + Copy + Clone + PartialEq> ResourceValuePair<V> {
-    pub const fn new(resource: Resource, value: V) -> Self {
-        Self { resource, value }
+impl<V: Debug + Copy + Clone + PartialEq> ItemValuePair<V> {
+    pub const fn new(item: Item, value: V) -> Self {
+        Self { item, value }
     }
 
-    pub const fn for_item(item: Item, value: V) -> Self {
-        Self {
-            resource: Resource::Item(item),
-            value,
-        }
-    }
-
-    pub const fn for_fluid(fluid: Fluid, value: V) -> Self {
-        Self {
-            resource: Resource::Fluid(fluid),
-            value,
-        }
-    }
-
-    pub fn to_tuple(&self) -> (Resource, V) {
-        (self.resource, self.value)
+    pub fn to_tuple(&self) -> (Item, V) {
+        (self.item, self.value)
     }
 }
 
-impl<V: Debug + Copy + Clone + PartialEq + Add<Output = V>> Add<V> for ResourceValuePair<V> {
+impl<V: Debug + Copy + Clone + PartialEq + Add<Output = V>> Add<V> for ItemValuePair<V> {
     type Output = Self;
 
     fn add(self, rhs: V) -> Self::Output {
         Self {
-            resource: self.resource,
+            item: self.item,
             value: self.value + rhs,
         }
     }
 }
 
-impl<V: fmt::Display + Debug + Copy + Clone + PartialEq> fmt::Display for ResourceValuePair<V> {
+impl<V: fmt::Display + Debug + Copy + Clone + PartialEq> fmt::Display for ItemValuePair<V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.resource.display_name(), self.value)
+        write!(f, "{}:{}", self.item.display_name(), self.value)
     }
 }
 
-impl<V: Serialize + Debug + Copy + Clone + PartialEq> Serialize for ResourceValuePair<V> {
+impl<V: Serialize + Debug + Copy + Clone + PartialEq> Serialize for ItemValuePair<V> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         let mut seq = serializer.serialize_map(Some(1))?;
-        seq.serialize_entry(self.resource.display_name(), &self.value)?;
+        seq.serialize_entry(self.item.display_name(), &self.value)?;
         seq.end()
     }
 }
 
 impl<'de, V: Deserialize<'de> + Debug + Copy + Clone + PartialEq> Deserialize<'de>
-    for ResourceValuePair<V>
+    for ItemValuePair<V>
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -104,7 +90,7 @@ struct ItemValuePairVisitor<V: Debug + Copy + Clone + PartialEq> {
 impl<'de, V: Deserialize<'de> + Debug + Copy + Clone + PartialEq> Visitor<'de>
     for ItemValuePairVisitor<V>
 {
-    type Value = ResourceValuePair<V>;
+    type Value = ItemValuePair<V>;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(
@@ -117,18 +103,18 @@ impl<'de, V: Deserialize<'de> + Debug + Copy + Clone + PartialEq> Visitor<'de>
     where
         M: MapAccess<'de>,
     {
-        if let Some(resource) = map.next_key::<Resource>()? {
-            Ok(ResourceValuePair::new(resource, map.next_value()?))
+        if let Some(item) = map.next_key::<Item>()? {
+            Ok(ItemValuePair::new(item, map.next_value()?))
         } else {
             Err(serde::de::Error::custom("Missing item and amount pair"))
         }
     }
 }
 
-impl<V: Debug + Copy + Clone + PartialEq> From<(Resource, V)> for ResourceValuePair<V> {
-    fn from(value: (Resource, V)) -> Self {
+impl<V: Debug + Copy + Clone + PartialEq> From<(Item, V)> for ItemValuePair<V> {
+    fn from(value: (Item, V)) -> Self {
         Self {
-            resource: value.0,
+            item: value.0,
             value: value.1,
         }
     }

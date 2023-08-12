@@ -13,8 +13,8 @@ macro_rules! item_definition {
             ),+
         });
 
-        impl ResourceDefinition for $type_name {
-            fn display_name(&self) -> &str {
+        impl $type_name {
+            pub fn display_name(&self) -> &str {
                 match self {
                     $(
                         $type_name::$name => $crate::item_helper!(@display_name $name($($item_args)+))
@@ -22,15 +22,23 @@ macro_rules! item_definition {
                 }
             }
 
-            fn is_raw(&self) -> bool {
+            pub fn is_extractable(&self) -> bool {
                 match self {
                     $(
-                        $type_name::$name => $crate::item_helper!(@raw $name($($item_args)+))
+                        $type_name::$name => $crate::item_helper!(@extractable $name($($item_args)+))
                     ),+
                 }
             }
 
-            fn sink_points(&self) -> Option<u32> {
+            pub fn is_fluid(&self) -> bool {
+                match self {
+                    $(
+                        $type_name::$name => $crate::item_helper!(@fluid $name($($item_args)+))
+                    ),+
+                }
+            }
+
+            pub fn sink_points(&self) -> Option<u32> {
                 match self {
                     $(
                         $type_name::$name => $crate::item_helper!(@sink_points $name($($item_args)+))
@@ -38,7 +46,7 @@ macro_rules! item_definition {
                 }
             }
 
-            fn from_str(value: &str) -> Option<$type_name> where Self: Sized {
+            pub fn from_str(value: &str) -> Option<$type_name> where Self: Sized {
                 match value {
                     $(
                         $crate::item_helper!(@display_name $name($($item_args)+)) => Some($type_name::$name)
@@ -74,6 +82,12 @@ macro_rules! item_helper {
     };
     // Display Name
     (
+        @display_name $name: ident()
+    ) => {
+        compile_error!("Missing name attribute for the item {}", $name);
+    };
+
+    (
         @display_name $name: ident(name: $display_name:literal $(, $($t:tt)*)?)
     ) => {
         $display_name
@@ -86,19 +100,36 @@ macro_rules! item_helper {
 
     // Raw
     (
-        @raw $name: ident()
+        @extractable $name: ident()
     ) => {
         false
     };
     (
-        @raw $name: ident(raw $(, $($t:tt)*)?)
+        @extractable $name: ident(extractable $(, $($t:tt)*)?)
     ) => {
         true
     };
     (
-        @raw $name: ident($field_name:ident $(: $value:literal)? $(, $($t:tt)*)?)
+        @extractable $name: ident($field_name:ident $(: $value:literal)? $(, $($t:tt)*)?)
     ) => {
-        $crate::item_helper!(@raw $name($($($t)*)?))
+        $crate::item_helper!(@extractable $name($($($t)*)?))
+    };
+
+    // Fluid
+    (
+        @fluid $name: ident()
+    ) => {
+        false
+    };
+    (
+        @fluid $name: ident(fluid $(, $($t:tt)*)?)
+    ) => {
+        true
+    };
+    (
+        @fluid $name: ident($field_name:ident $(: $value:literal)? $(, $($t:tt)*)?)
+    ) => {
+        $crate::item_helper!(@fluid $name($($($t)*)?))
     };
 
     // Sink Points

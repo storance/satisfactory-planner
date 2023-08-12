@@ -1,4 +1,4 @@
-use crate::game::{Machine, MachineIO, Resource, ResourceValuePair};
+use crate::game::{Machine, MachineIO, Item, ItemValuePair};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io;
@@ -9,8 +9,8 @@ struct RecipeDefinition {
     pub name: String,
     #[serde(default)]
     pub alternate: bool,
-    pub outputs: Vec<ResourceValuePair<u32>>,
-    pub inputs: Vec<ResourceValuePair<u32>>,
+    pub outputs: Vec<ItemValuePair<u32>>,
+    pub inputs: Vec<ItemValuePair<u32>>,
     pub craft_time: u32,
     #[serde(default = "default_power_multiplier")]
     pub power_multiplier: f32,
@@ -23,26 +23,26 @@ struct RecipesDefinition {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub struct RecipeResource {
-    pub resource: Resource,
+pub struct RecipeIO {
+    pub item: Item,
     pub amount: u32,
     pub amount_per_minute: f64,
 }
 
-impl RecipeResource {
-    pub fn new(resource: Resource, amount: u32, amount_per_minute: f64) -> Self {
+impl RecipeIO {
+    pub fn new(item: Item, amount: u32, amount_per_minute: f64) -> Self {
         Self {
-            resource,
+            item,
             amount,
             amount_per_minute,
         }
     }
 
-    pub fn from(rv: &ResourceValuePair<u32>, crafts_per_minute: f64) -> Self {
+    pub fn from(iv: &ItemValuePair<u32>, crafts_per_minute: f64) -> Self {
         Self {
-            resource: rv.resource,
-            amount: rv.value,
-            amount_per_minute: rv.value as f64 * crafts_per_minute,
+            item: iv.item,
+            amount: iv.value,
+            amount_per_minute: iv.value as f64 * crafts_per_minute,
         }
     }
 }
@@ -51,8 +51,8 @@ impl RecipeResource {
 pub struct Recipe {
     pub name: String,
     pub alternate: bool,
-    pub outputs: Vec<RecipeResource>,
-    pub inputs: Vec<RecipeResource>,
+    pub outputs: Vec<RecipeIO>,
+    pub inputs: Vec<RecipeIO>,
     pub craft_time: u32,
     pub power_multiplier: f32,
     pub machine: Machine,
@@ -92,11 +92,11 @@ impl Recipe {
         let mut recipes: Vec<Recipe> = Vec::with_capacity(config.recipes.len());
         for recipe in config.recipes {
             let inputs_count = recipe.inputs.iter().fold(MachineIO::zero(), |mut acc, rv| {
-                match rv.resource {
-                    Resource::Item(..) => acc.items += 1,
-                    Resource::Fluid(..) => acc.fluids += 1,
+                if rv.item.is_fluid() {
+                    acc.fluids += 1;
+                } else {
+                    acc.items += 1;
                 }
-
                 acc
             });
 
@@ -104,11 +104,11 @@ impl Recipe {
                 .outputs
                 .iter()
                 .fold(MachineIO::zero(), |mut acc, rv| {
-                    match rv.resource {
-                        Resource::Item(..) => acc.items += 1,
-                        Resource::Fluid(..) => acc.fluids += 1,
+                    if rv.item.is_fluid() {
+                        acc.fluids += 1;
+                    } else {
+                        acc.items += 1;
                     }
-
                     acc
                 });
 
@@ -158,16 +158,16 @@ impl Recipe {
         (self.calc_min_power() + self.calc_max_power()) / 2.0
     }
 
-    pub fn find_input_by_item(&self, resource: Resource) -> Option<&RecipeResource> {
+    pub fn find_input_by_item(&self, item: Item) -> Option<&RecipeIO> {
         self.inputs
             .iter()
-            .find(|output| output.resource == resource)
+            .find(|output| output.item == item)
     }
 
-    pub fn find_output_by_item(&self, resource: Resource) -> Option<&RecipeResource> {
+    pub fn find_output_by_item(&self, item: Item) -> Option<&RecipeIO> {
         self.outputs
             .iter()
-            .find(|output| output.resource == resource)
+            .find(|output| output.item == item)
     }
 }
 
@@ -184,12 +184,12 @@ impl From<RecipeDefinition> for Recipe {
         let inputs = recipe
             .inputs
             .iter()
-            .map(|rv| RecipeResource::from(rv, crafts_per_min))
+            .map(|rv| RecipeIO::from(rv, crafts_per_min))
             .collect();
         let outputs = recipe
             .outputs
             .iter()
-            .map(|rv| RecipeResource::from(rv, crafts_per_min))
+            .map(|rv| RecipeIO::from(rv, crafts_per_min))
             .collect();
 
         Self {

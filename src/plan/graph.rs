@@ -1,20 +1,20 @@
-use crate::game::{Recipe, Resource, ResourceValuePair};
+use crate::game::{Recipe, Item, ItemValuePair};
 use std::fmt;
 
 #[derive(Debug)]
 pub enum PlanGraphNode<'a> {
-    InputNode(ResourceValuePair<f64>),
-    OutputNode(ResourceValuePair<f64>, bool),
+    InputNode(ItemValuePair<f64>),
+    OutputNode(ItemValuePair<f64>, bool),
     ProductionNode(&'a Recipe, f64),
 }
 
 impl<'a> PlanGraphNode<'a> {
-    pub fn new_input(resource_value: ResourceValuePair<f64>) -> Self {
-        PlanGraphNode::InputNode(resource_value)
+    pub fn new_input(item_value: ItemValuePair<f64>) -> Self {
+        PlanGraphNode::InputNode(item_value)
     }
 
-    pub fn new_output(resource_value: ResourceValuePair<f64>, by_product: bool) -> Self {
-        PlanGraphNode::OutputNode(resource_value, by_product)
+    pub fn new_output(item_value: ItemValuePair<f64>, by_product: bool) -> Self {
+        PlanGraphNode::OutputNode(item_value, by_product)
     }
 
     pub fn new_production(recipe: &'a Recipe, machine_count: f64) -> Self {
@@ -28,9 +28,9 @@ impl<'a> PlanGraphNode<'a> {
         }
     }
 
-    pub fn is_input_for_item(&self, resource: Resource) -> bool {
+    pub fn is_input_for_item(&self, item: Item) -> bool {
         match self {
-            PlanGraphNode::InputNode(resource_value) => resource_value.resource == resource,
+            PlanGraphNode::InputNode(item_value) => item_value.item == item,
             _ => false,
         }
     }
@@ -42,9 +42,9 @@ impl<'a> PlanGraphNode<'a> {
         }
     }
 
-    pub fn is_output_for_item(&self, resource: Resource) -> bool {
+    pub fn is_output_for_item(&self, item: Item) -> bool {
         match self {
-            PlanGraphNode::OutputNode(resource_value, ..) => resource_value.resource == resource,
+            PlanGraphNode::OutputNode(item_value, ..) => item_value.item == item,
             _ => false,
         }
     }
@@ -67,15 +67,15 @@ impl<'a> PlanGraphNode<'a> {
 impl<'a> fmt::Display for PlanGraphNode<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PlanGraphNode::InputNode(resource_value) => {
+            PlanGraphNode::InputNode(item_value) => {
                 write!(
                     f,
                     "{} {} / min",
-                    resource_value.resource,
-                    round(resource_value.value, 3)
+                    item_value.item,
+                    round(item_value.value, 3)
                 )
             }
-            PlanGraphNode::ProductionNode(recipe, machine_count, ..) => {
+            PlanGraphNode::ProductionNode(recipe, machine_count) => {
                 write!(
                     f,
                     "{} {}x {}",
@@ -84,12 +84,12 @@ impl<'a> fmt::Display for PlanGraphNode<'a> {
                     recipe.machine
                 )
             }
-            PlanGraphNode::OutputNode(resource_value, ..) => {
+            PlanGraphNode::OutputNode(item_value, ..) => {
                 write!(
                     f,
                     "{} {} / min",
-                    resource_value.resource,
-                    round(resource_value.value, 3)
+                    item_value.item,
+                    round(item_value.value, 3)
                 )
             }
         }

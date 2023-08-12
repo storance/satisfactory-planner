@@ -1,4 +1,3 @@
-use crate::game::ResourceDefinition;
 use crate::item_definition;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -6,16 +5,16 @@ use std::fmt;
 item_definition!(
     Item {
         // Ore
-        IronOre(name: "Iron Ore", raw, sink_points: 1),
-        CopperOre(name: "Copper Ore", raw, sink_points: 3),
-        Coal(name: "Coal", raw, sink_points: 3),
-        RawQuartz(name: "Raw Quartz", raw, sink_points: 15),
-        CateriumOre(name: "Caterium Ore", raw, sink_points: 7),
-        Limestone(name: "Limestone", raw, sink_points: 2),
-        Bauxite(name: "Bauxite", raw, sink_points: 8),
-        Uranium(name: "Uranium", raw, sink_points: 35),
-        SAMOre(name: "SAM Ore", raw),
-        Sulfur(name: "Sulfur", raw, sink_points: 11),
+        IronOre(name: "Iron Ore", extractable, sink_points: 1),
+        CopperOre(name: "Copper Ore", extractable, sink_points: 3),
+        Coal(name: "Coal", extractable, sink_points: 3),
+        RawQuartz(name: "Raw Quartz", extractable, sink_points: 15),
+        CateriumOre(name: "Caterium Ore", extractable, sink_points: 7),
+        Limestone(name: "Limestone", extractable, sink_points: 2),
+        Bauxite(name: "Bauxite", extractable, sink_points: 8),
+        Uranium(name: "Uranium", extractable, sink_points: 35),
+        SAMOre(name: "SAM Ore", extractable),
+        Sulfur(name: "Sulfur", extractable, sink_points: 11),
 
         // Other Resources
         Leaves(name: "Leaves", sink_points: 3),
@@ -149,6 +148,18 @@ item_definition!(
         AssemblyDirectorSystem(name: "Assembly Director System", sink_points: 543632),
         MagneticFieldGenerator(name: "Magnetic Field Generator", sink_points: 15650),
         ThermalPropulsionRocket(name: "Thermal Propulsion Rocket", sink_points: 732956),
-        NuclearPasta(name: "Nuclear Pasta", sink_points: 543424)
+        NuclearPasta(name: "Nuclear Pasta", sink_points: 543424),
+        
+        // Fluids
+        Water(name: "Water", extractable, fluid),
+        CrudeOil(name: "Crude Oil", extractable, fluid),
+        NitrogenGas(name: "Nitrogen Gas", extractable, fluid),
+        LiquidBiofuel(name: "Liquid Biofuel", fluid),
+        HeavyOilResidue(name: "Heavy Oil Residue", fluid),
+        Fuel(name: "Fuel", fluid),
+        Turbofuel(name: "Turbofuel", fluid),
+        AluminaSolution(name: "Alumina Solution", fluid),
+        SulfuricAcid(name: "Sulfuric Acid", fluid),
+        NitricAcid(name: "Nitric Acid", fluid)
     }
 );

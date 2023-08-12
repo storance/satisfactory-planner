@@ -2,41 +2,41 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
 
-use crate::game::{Fluid, Item, Recipe, Resource, ResourceDefinition, ResourceValuePair};
+use crate::game::{Item, Recipe, ItemValuePair};
 use crate::plan::PlanError;
 
-const DEFAULT_LIMITS: [ResourceValuePair<f64>; 12] = [
-    ResourceValuePair::for_item(Item::Bauxite, 9780.0),
-    ResourceValuePair::for_item(Item::CateriumOre, 12040.0),
-    ResourceValuePair::for_item(Item::Coal, 30900.0),
-    ResourceValuePair::for_item(Item::CopperOre, 28860.0),
-    ResourceValuePair::for_fluid(Fluid::CrudeOil, 11700.0),
-    ResourceValuePair::for_item(Item::IronOre, 70380.0),
-    ResourceValuePair::for_item(Item::Limestone, 52860.0),
-    ResourceValuePair::for_fluid(Fluid::NitrogenGas, 12000.0),
-    ResourceValuePair::for_item(Item::RawQuartz, 10500.0),
-    ResourceValuePair::for_item(Item::Sulfur, 6840.0),
-    ResourceValuePair::for_item(Item::Uranium, 2100.0),
-    ResourceValuePair::for_fluid(Fluid::Water, 9007199254740991.0),
+const DEFAULT_LIMITS: [ItemValuePair<f64>; 12] = [
+    ItemValuePair::new(Item::Bauxite, 9780.0),
+    ItemValuePair::new(Item::CateriumOre, 12040.0),
+    ItemValuePair::new(Item::Coal, 30900.0),
+    ItemValuePair::new(Item::CopperOre, 28860.0),
+    ItemValuePair::new(Item::CrudeOil, 11700.0),
+    ItemValuePair::new(Item::IronOre, 70380.0),
+    ItemValuePair::new(Item::Limestone, 52860.0),
+    ItemValuePair::new(Item::NitrogenGas, 12000.0),
+    ItemValuePair::new(Item::RawQuartz, 10500.0),
+    ItemValuePair::new(Item::Sulfur, 6840.0),
+    ItemValuePair::new(Item::Uranium, 2100.0),
+    ItemValuePair::new(Item::Water, 9007199254740991.0),
 ];
 
 #[derive(Debug, Serialize, Deserialize)]
 struct PlanConfigDefinition {
     #[serde(default)]
-    inputs: Vec<ResourceValuePair<f64>>,
+    inputs: Vec<ItemValuePair<f64>>,
     #[serde(default)]
-    outputs: Vec<ResourceValuePair<f64>>,
-    enabled_recipes: Option<Vec<String>>,
+    outputs: Vec<ItemValuePair<f64>>,
+    enabled_recipes: Vec<String>,
     #[serde(default)]
-    override_limits: HashMap<Resource, f64>,
+    override_limits: HashMap<Item, f64>,
 }
 
 #[derive(Debug)]
 pub struct PlanConfig<'a> {
-    pub inputs: Vec<ResourceValuePair<f64>>,
-    pub outputs: Vec<ResourceValuePair<f64>>,
+    pub inputs: HashMap<Item, f64>,
+    pub outputs: HashMap<Item, f64>,
     pub recipes: Vec<&'a Recipe>,
-    pub input_limits: HashMap<Resource, f64>,
+    pub input_limits: HashMap<Item, f64>,
 }
 
 impl<'a> PlanConfig<'a> {
@@ -47,73 +47,65 @@ impl<'a> PlanConfig<'a> {
         let file = File::open(file_path)?;
         let config: PlanConfigDefinition = serde_yaml::from_reader(file)?;
 
-        let mut input_limits: HashMap<Resource, f64> = DEFAULT_LIMITS
+        let mut input_limits: HashMap<Item, f64> = DEFAULT_LIMITS
             .iter()
-            .map(ResourceValuePair::to_tuple)
+            .map(ItemValuePair::to_tuple)
             .collect();
 
-        for (resource, value) in config.override_limits {
-            if !resource.is_raw() {
-                return Err(PlanError::InvalidOverrideLimit(String::from(
-                    resource.display_name(),
-                )));
+        for (item, value) in config.override_limits {
+            if !item.is_extractable() {
+                return Err(PlanError::InvalidOverrideLimit(item));
             } else {
-                input_limits.insert(resource, value);
+                input_limits.insert(item, value);
             }
         }
 
         // validate there are no raw resource in the inputs list
         for input in &config.inputs {
-            if input.resource.is_raw() {
-                return Err(PlanError::UnexpectedRawInputItem(String::from(
-                    input.resource.display_name(),
-                )));
+            if input.item.is_extractable() {
+                return Err(PlanError::UnexpectedRawInputItem(input.item));
             }
         }
 
         // validate there are no raw resource in the outputs list
-        for output in &config.inputs {
-            if output.resource.is_raw() {
-                return Err(PlanError::UnexpectedRawOutputItem(String::from(
-                    output.resource.display_name(),
-                )));
+        for output in &config.outputs {
+            if output.item.is_extractable() {
+                return Err(PlanError::UnexpectedRawOutputItem(output.item));
             }
         }
 
         let recipes_by_name: HashMap<String, &'a Recipe> =
             all_recipes.iter().map(|r| (r.name.clone(), r)).collect();
 
-        // lookup the enabled recipes from the set of enabled recipes
-        // if enabled_recipes was not specified, default to using all the base recipes
-        let recipes: Vec<&Recipe> = if let Some(enabled_recipes) = config.enabled_recipes {
-            enabled_recipes
-                .iter()
-                .map(|recipe_name| {
-                    recipes_by_name
-                        .get(recipe_name)
-                        .map(|r| *r)
-                        .ok_or(PlanError::InvalidRecipe(recipe_name.clone()))
-                })
-                .collect::<Result<Vec<&'a Recipe>, PlanError>>()?
-        } else {
-            all_recipes.iter().filter(|r| !r.alternate).collect()
-        };
+        // lookup the enabled recipes from the list of all recipes
+        let mut recipes: Vec<&Recipe> = Vec::new();
+        for recipe_name in &config.enabled_recipes {
+            if recipe_name.eq_ignore_ascii_case("All Base") {
+                for recipe in all_recipes {
+                    if !recipe.alternate && !recipes.contains(&recipe) {
+                        recipes.push(recipe);
+                    }
+                }
+            } else if recipe_name.eq_ignore_ascii_case("All Alternate") {
+                for recipe in all_recipes {
+                    if recipe.alternate && !recipes.contains(&recipe) {
+                        recipes.push(recipe);
+                    }
+                }
+            } else {
+                let recipe = recipes_by_name.get(recipe_name).map(|r| *r)
+                    .ok_or(PlanError::InvalidRecipe(recipe_name.clone()))?;
+                if !recipes.contains(&recipe) {
+                    recipes.push(recipe);
+                }
+            }
+        }
 
         Ok(PlanConfig {
-            inputs: config.inputs,
-            outputs: config.outputs,
+            inputs: config.inputs.iter().map(ItemValuePair::to_tuple).collect(),
+            outputs: config.outputs.iter().map(ItemValuePair::to_tuple).collect(),
             recipes,
             input_limits,
         })
-    }
-
-    pub fn find_input_by_resource(&self, resource: Resource) -> Option<&ResourceValuePair<f64>> {
-        self.inputs.iter().find(|input| input.resource == resource)
-    }
-
-    pub fn find_output_by_resource(&self, resource: Resource) -> Option<&ResourceValuePair<f64>> {
-        self.outputs
-            .iter()
-            .find(|output| output.resource == resource)
     }
 }

@@ -3,7 +3,7 @@ extern crate serde;
 extern crate serde_yaml;
 extern crate thiserror;
 
-use crate::game::{Fluid, Item, Machine, Recipe, ResourceDefinition};
+use crate::game::{Item, Machine, Recipe};
 use crate::plan::{solve, PlanConfig};
 use petgraph::dot::Dot;
 
@@ -30,20 +30,11 @@ fn main() {
 
 pub fn print_item(item: Item) {
     println!(
-        "{:?}(display_name: {}, is_raw: {}, sink_points: {:?})",
+        "{:?}(display_name: {}, is_fluid(): {}. is_extractable: {}, sink_points: {:?})",
         item,
         item.display_name(),
-        item.is_raw(),
-        item.sink_points()
-    )
-}
-
-pub fn print_fluid(item: Fluid) {
-    println!(
-        "{:?}(display_name: {}, is_raw: {}, sink_points: {:?})",
-        item,
-        item.display_name(),
-        item.is_raw(),
+        item.is_fluid(),
+        item.is_extractable(),
         item.sink_points()
     )
 }

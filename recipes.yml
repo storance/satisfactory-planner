@@ -364,3 +364,37 @@ recipes:
       - Modular Frame: 3
     craft_time: 60
     machine: Assembler
+  # Steel Ingot
+
+  # Steel Beam
+
+  # Steel Pipe
+
+  # Encased Industrial Beam
+
+  # Stator
+
+  # Motor
+
+  # Heavy Industrial Frame
+
+  # Smart Plating
+  - name: Smart Plating
+    alternative: true
+    inputs:
+      - Reinforced Iron Plate: 2
+      - Rotor: 1
+    outputs:
+      - Smart Plating: 1
+    craft_time: 30
+    machine: Assembler
+  - name: Plastic Smart Plating
+    alternative: true
+    inputs:
+      - Reinforced Iron Plate: 1
+      - Rotor: 1
+      - Plastic: 3
+    outputs:
+      - Smart Plating: 2
+    craft_time: 24
+    machine: Manufacturer
