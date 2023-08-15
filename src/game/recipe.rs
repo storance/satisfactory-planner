@@ -29,24 +29,6 @@ pub struct RecipeIO {
     pub amount_per_minute: f64,
 }
 
-impl RecipeIO {
-    pub fn new(item: Item, amount: u32, amount_per_minute: f64) -> Self {
-        Self {
-            item,
-            amount,
-            amount_per_minute,
-        }
-    }
-
-    pub fn from(iv: &ItemValuePair<u32>, crafts_per_minute: f64) -> Self {
-        Self {
-            item: iv.item,
-            amount: iv.value,
-            amount_per_minute: iv.value as f64 * crafts_per_minute,
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct Recipe {
     pub name: String,
@@ -158,6 +140,10 @@ impl Recipe {
         (self.calc_min_power() + self.calc_max_power()) / 2.0
     }
 
+    pub fn calc_overclocked_avg_power(&self, clock_speed: f32) -> f32 {
+        self.calc_avg_power() * (clock_speed / 100.0).powf(1.321928)
+    }
+
     pub fn find_input_by_item(&self, item: Item) -> Option<&RecipeIO> {
         self.inputs
             .iter()
@@ -168,6 +154,24 @@ impl Recipe {
         self.outputs
             .iter()
             .find(|output| output.item == item)
+    }
+}
+
+impl RecipeIO {
+    pub fn new(item: Item, amount: u32, amount_per_minute: f64) -> Self {
+        Self {
+            item,
+            amount,
+            amount_per_minute,
+        }
+    }
+
+    pub fn from(iv: &ItemValuePair<u32>, crafts_per_minute: f64) -> Self {
+        Self {
+            item: iv.item,
+            amount: iv.value,
+            amount_per_minute: iv.value as f64 * crafts_per_minute,
+        }
     }
 }
 

@@ -15,8 +15,6 @@ fn main() {
         panic!("Failed to load recipes: {}", e);
     });
 
-    // recipes.iter().for_each(|r| println!("{:?}", r));
-
     let plan = PlanConfig::from_file("plan.yml", &recipes).unwrap_or_else(|e| {
         panic!("Failed to load plan: {}", e);
     });

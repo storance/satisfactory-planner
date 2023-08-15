@@ -8,6 +8,7 @@ recipes:
     craft_time: 2
     machine: Smelter
   - name: Iron Alloy Ingot
+    alternate: true
     inputs:
       - Iron Ore: 2
       - Copper Ore: 2
@@ -16,7 +17,7 @@ recipes:
     craft_time: 6
     machine: Foundry
   - name: Pure Iron Ingot
-    alternative: true
+    alternate: true
     inputs:
       - Iron Ore: 7
       - Water: 4
@@ -33,6 +34,7 @@ recipes:
     craft_time: 2
     machine: Smelter
   - name: Copper Alloy Ingot
+    alternate: true
     inputs:
       - Copper Ore: 10
       - Iron Ore: 5
@@ -41,7 +43,7 @@ recipes:
     craft_time: 12
     machine: Foundry
   - name: Pure Copper Ingot
-    alternative: true
+    alternate: true
     inputs:
       - Copper Ore: 6
       - Water: 4
@@ -132,7 +134,7 @@ recipes:
     craft_time: 6
     machine: Constructor
   - name: Coated Iron Plate
-    alternative: true
+    alternate: true
     inputs:
       - Iron Ingot: 10
       - Plastic: 2
@@ -141,7 +143,7 @@ recipes:
     craft_time: 12
     machine: Assembler
   - name: Steel Coated Plate
-    alternative: true
+    alternate: true
     inputs:
       - Steel Ingot: 3
       - Plastic: 2
@@ -158,7 +160,7 @@ recipes:
     craft_time: 4
     machine: Constructor
   - name: Steel Rod
-    alternative: true
+    alternate: true
     inputs:
       - Steel Ingot: 1
     outputs:
@@ -174,7 +176,7 @@ recipes:
     craft_time: 4
     machine: Constructor
   - name: Caterium Wire
-    alternative: true
+    alternate: true
     inputs:
       - Caterium Ingot: 1
     outputs:
@@ -182,7 +184,7 @@ recipes:
     craft_time: 4
     machine: Constructor
   - name: Fused Wire
-    alternative: true
+    alternate: true
     inputs:
       - Copper Ingot: 4
       - Caterium Ingot: 1
@@ -191,7 +193,7 @@ recipes:
     craft_time: 20
     machine: Assembler
   - name: Iron Wire
-    alternative: true
+    alternate: true
     inputs:
       - Iron Ingot: 5
     outputs:
@@ -207,7 +209,7 @@ recipes:
     craft_time: 2
     machine: Constructor
   - name: Coated Cable
-    alternative: true
+    alternate: true
     inputs:
       - Wire: 5
       - Heavy Oil Residue: 2
@@ -216,7 +218,7 @@ recipes:
     craft_time: 8
     machine: Refinery
   - name: Insulated Cable
-    alternative: true
+    alternate: true
     inputs:
       - Wire: 9
       - Rubber: 6
@@ -225,7 +227,7 @@ recipes:
     craft_time: 12
     machine: Assembler
   - name: Quickwire Cable
-    alternative: true
+    alternate: true
     inputs:
       - Quickwire: 7
       - Rubber: 3
@@ -242,7 +244,7 @@ recipes:
     craft_time: 6
     machine: Constructor
   - name: Steamed Copper Sheet
-    alternative: true
+    alternate: true
     inputs:
       - Copper Ingot: 3
       - Water: 3
@@ -259,7 +261,7 @@ recipes:
     craft_time: 6
     machine: Constructor
   - name: Casted Screw
-    alternative: true
+    alternate: true
     inputs:
       - Iron Ingot: 5
     outputs:
@@ -267,7 +269,7 @@ recipes:
     craft_time: 24
     machine: Constructor
   - name: Steel Screw
-    alternative: true
+    alternate: true
     inputs:
       - Steel Beam: 1
     outputs:
@@ -284,7 +286,7 @@ recipes:
     craft_time: 12
     machine: Assembler
   - name: Adhered Iron Plate
-    alternative: true
+    alternate: true
     inputs:
       - Iron Plate: 3
       - Rubber: 1
@@ -293,7 +295,7 @@ recipes:
     craft_time: 16
     machine: Assembler
   - name: Bolted Iron Plate
-    alternative: true
+    alternate: true
     inputs:
       - Iron Plate: 18
       - Screw: 50
@@ -302,7 +304,7 @@ recipes:
     craft_time: 12
     machine: Assembler
   - name: Stitched Iron Plate
-    alternative: true
+    alternate: true
     inputs:
       - Iron Plate: 10
       - Wire: 20
@@ -320,7 +322,7 @@ recipes:
     craft_time: 15
     machine: Assembler
   - name: Copper Rotor
-    alternative: true
+    alternate: true
     inputs:
       - Copper Sheet: 6
       - Screw: 52
@@ -329,7 +331,7 @@ recipes:
     craft_time: 16
     machine: Assembler
   - name: Steel Rotor
-    alternative: true
+    alternate: true
     inputs:
       - Steel Pipe: 2
       - Wire: 6
@@ -347,7 +349,7 @@ recipes:
     craft_time: 60
     machine: Assembler
   - name: Bolted Frame
-    alternative: true
+    alternate: true
     inputs:
       - Reinforced Iron Plate: 3
       - Screw: 56
@@ -356,7 +358,7 @@ recipes:
     craft_time: 24
     machine: Assembler
   - name: Steeled Frame
-    alternative: true
+    alternate: true
     inputs:
       - Reinforced Iron Plate: 2
       - Steel Pipe: 10
@@ -380,7 +382,7 @@ recipes:
 
   # Smart Plating
   - name: Smart Plating
-    alternative: true
+    alternate: true
     inputs:
       - Reinforced Iron Plate: 2
       - Rotor: 1
@@ -389,7 +391,7 @@ recipes:
     craft_time: 30
     machine: Assembler
   - name: Plastic Smart Plating
-    alternative: true
+    alternate: true
     inputs:
       - Reinforced Iron Plate: 1
       - Rotor: 1

@@ -4,7 +4,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::ops::Add;
+use std::ops::{Add, Mul};
 
 use crate::game::{Item, RecipeIO};
 
@@ -52,6 +52,18 @@ impl<V: Debug + Copy + Clone + PartialEq + Add<Output = V>> Add<V> for ItemValue
         }
     }
 }
+
+impl<V: Debug + Copy + Clone + PartialEq + Mul<Output = V>> Mul<V> for ItemValuePair<V> {
+    type Output = Self;
+
+    fn mul(self, rhs: V) -> Self::Output {
+        Self {
+            item: self.item,
+            value: self.value * rhs,
+        }
+    }
+}
+
 
 impl<V: fmt::Display + Debug + Copy + Clone + PartialEq> fmt::Display for ItemValuePair<V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
