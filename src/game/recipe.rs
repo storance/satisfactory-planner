@@ -1,4 +1,4 @@
-use crate::game::{Machine, MachineIO, Item, ItemValuePair};
+use crate::game::{Item, ItemValuePair, Machine, MachineIO};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io;
@@ -120,7 +120,7 @@ impl Recipe {
                 ));
             }
 
-            if let Some(..) = recipes.iter().find(|r| r.name == recipe.name) {
+            if recipes.iter().any(|r| r.name == recipe.name) {
                 return Err(RecipeError::DuplicateRecipeName(recipe.name));
             }
 
@@ -176,15 +176,11 @@ impl Recipe {
     }
 
     pub fn find_input_by_item(&self, item: Item) -> Option<&RecipeIO> {
-        self.inputs
-            .iter()
-            .find(|output| output.item == item)
+        self.inputs.iter().find(|output| output.item == item)
     }
 
     pub fn find_output_by_item(&self, item: Item) -> Option<&RecipeIO> {
-        self.outputs
-            .iter()
-            .find(|output| output.item == item)
+        self.outputs.iter().find(|output| output.item == item)
     }
 }
 

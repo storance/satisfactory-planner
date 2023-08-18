@@ -1,4 +1,4 @@
-use crate::game::{Recipe, Item, ItemValuePair};
+use crate::game::{Item, ItemValuePair, Recipe};
 use std::fmt;
 
 #[derive(Debug, Clone)]
@@ -10,7 +10,7 @@ pub enum NodeValue<'a> {
 
 pub struct ScoredNodeValue<'a> {
     pub node: NodeValue<'a>,
-    pub score: Option<f64>
+    pub score: Option<f64>,
 }
 
 impl<'a> NodeValue<'a> {
@@ -111,12 +111,9 @@ impl<'a> fmt::Display for ScoredNodeValue<'a> {
     }
 }
 
-impl <'a> From<NodeValue<'a>> for ScoredNodeValue<'a> {
+impl<'a> From<NodeValue<'a>> for ScoredNodeValue<'a> {
     fn from(node: NodeValue<'a>) -> Self {
-        Self {
-            node,
-            score: None
-        }
+        Self { node, score: None }
     }
 }
 

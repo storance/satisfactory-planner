@@ -64,7 +64,6 @@ impl<V: Debug + Copy + Clone + PartialEq + Mul<Output = V>> Mul<V> for ItemValue
     }
 }
 
-
 impl<V: fmt::Display + Debug + Copy + Clone + PartialEq> fmt::Display for ItemValuePair<V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.item.display_name(), self.value)

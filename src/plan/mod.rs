@@ -5,10 +5,10 @@ mod config;
 mod graph;
 mod solver;
 
+use crate::game::Item;
 pub use config::*;
 pub use graph::*;
 pub use solver::*;
-use crate::game::Item;
 
 #[derive(Error, Debug)]
 pub enum PlanError {

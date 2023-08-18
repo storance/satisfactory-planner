@@ -149,7 +149,7 @@ item_definition!(
         MagneticFieldGenerator(name: "Magnetic Field Generator", sink_points: 15650),
         ThermalPropulsionRocket(name: "Thermal Propulsion Rocket", sink_points: 732956),
         NuclearPasta(name: "Nuclear Pasta", sink_points: 543424),
-        
+
         // Fluids
         Water(name: "Water", extractable, fluid),
         CrudeOil(name: "Crude Oil", extractable, fluid),

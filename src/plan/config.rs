@@ -44,13 +44,13 @@ pub struct Score {
     pub weighted_items_used: f64,
     pub power_used: f64,
     pub space_used: f64,
-    pub buildings_used: f64
+    pub buildings_used: f64,
 }
 
 #[derive(Debug, Copy, Clone)]
 pub struct ScoredRecipe<'a> {
     pub recipe: &'a Recipe,
-    pub score: Score
+    pub score: Score,
 }
 
 impl<'a> PlanConfig<'a> {
@@ -62,7 +62,7 @@ impl<'a> PlanConfig<'a> {
         let config: PlanConfigDefinition = serde_yaml::from_reader(file)?;
 
         let mut input_limits: HashMap<Item, f64> =
-            DEFAULT_LIMITS.iter().map(|limit| *limit).collect();
+            DEFAULT_LIMITS.iter().copied().collect();
 
         for (item, value) in config.override_limits {
             if !item.is_extractable() {
@@ -98,8 +98,7 @@ impl<'a> PlanConfig<'a> {
                 recipes.extend(all_recipes.iter().filter(|r| r.alternate));
             } else {
                 let recipe = recipes_by_name
-                    .get(recipe_name)
-                    .map(|r| *r)
+                    .get(recipe_name).copied()
                     .ok_or(PlanError::InvalidRecipe(recipe_name.clone()))?;
                 if !recipes.contains(&recipe) {
                     recipes.push(recipe);
@@ -121,26 +120,35 @@ impl<'a> PlanConfig<'a> {
 
 pub fn score_recipes<'a>(enabled_recipes: &Vec<&'a Recipe>) -> Vec<ScoredRecipe<'a>> {
     let mut scored_recipes: Vec<ScoredRecipe<'a>> = Vec::new();
-    let input_limits: HashMap<Item, f64> = DEFAULT_LIMITS.iter().map(|limit| *limit).collect();
+    let input_limits: HashMap<Item, f64> = DEFAULT_LIMITS.iter().copied().collect();
 
     for recipe in enabled_recipes {
-        scored_recipes.push(score_recipe(*recipe, enabled_recipes, &input_limits));
+        scored_recipes.push(score_recipe(recipe, enabled_recipes, &input_limits));
     }
 
     scored_recipes
 }
 
-fn score_recipe<'a>(recipe: &'a Recipe,
-                    enabled_recipes: &Vec<&'a Recipe>,
-                    input_limits: &HashMap<Item, f64>) -> ScoredRecipe<'a> {
+fn score_recipe<'a>(
+    recipe: &'a Recipe,
+    enabled_recipes: &Vec<&'a Recipe>,
+    input_limits: &HashMap<Item, f64>,
+) -> ScoredRecipe<'a> {
     let output = recipe.outputs.first().unwrap();
-    score_recipe_for_output(recipe, ItemValuePair::new(output.item, 60.0), enabled_recipes, input_limits)
+    score_recipe_for_output(
+        recipe,
+        ItemValuePair::new(output.item, 60.0),
+        enabled_recipes,
+        input_limits,
+    )
 }
 
-fn score_recipe_for_output<'a>(recipe: &'a Recipe,
-                    desired_output: ItemValuePair<f64>,
-                    enabled_recipes: &Vec<&'a Recipe>,
-                    input_limits: &HashMap<Item, f64>) -> ScoredRecipe<'a> {
+fn score_recipe_for_output<'a>(
+    recipe: &'a Recipe,
+    desired_output: ItemValuePair<f64>,
+    enabled_recipes: &Vec<&'a Recipe>,
+    input_limits: &HashMap<Item, f64>,
+) -> ScoredRecipe<'a> {
     let mut weighted_items_used = 0.0;
     let mut power_used = 0.0;
     let mut space_used: f64 = 0.0;
@@ -151,21 +159,30 @@ fn score_recipe_for_output<'a>(recipe: &'a Recipe,
 
     for input in &recipe.inputs {
         if input.item.is_extractable() {
-            weighted_items_used += (input.amount_per_minute * machine_count / input_limits.get(&input.item).unwrap()) * 10000.0;
+            weighted_items_used += (input.amount_per_minute * machine_count
+                / input_limits.get(&input.item).unwrap())
+                * 10000.0;
         } else {
-            let candidate_recipes: Vec<ScoredRecipe<'a>> = enabled_recipes.iter()
+            let candidate_recipes: Vec<ScoredRecipe<'a>> = enabled_recipes
+                .iter()
                 .filter(|r| r.outputs.iter().any(|output| output.item == input.item))
                 .map(|r| {
-                    let desired_output = ItemValuePair::new(input.item,  input.amount_per_minute * machine_count);
-                    score_recipe_for_output(*r, desired_output, enabled_recipes, input_limits)
-                }).collect();
+                    let desired_output =
+                        ItemValuePair::new(input.item, input.amount_per_minute * machine_count);
+                    score_recipe_for_output(r, desired_output, enabled_recipes, input_limits)
+                })
+                .collect();
             if candidate_recipes.is_empty() {
                 weighted_items_used = f64::INFINITY;
                 power_used = f64::INFINITY;
                 space_used = f64::INFINITY;
                 buildings_used = f64::INFINITY;
             } else {
-                weighted_items_used += candidate_recipes.iter().map(|r| r.score.weighted_items_used).min_by(f64::total_cmp).unwrap();
+                weighted_items_used += candidate_recipes
+                    .iter()
+                    .map(|r| r.score.weighted_items_used)
+                    .min_by(f64::total_cmp)
+                    .unwrap();
             }
         }
     }
@@ -176,8 +193,7 @@ fn score_recipe_for_output<'a>(recipe: &'a Recipe,
             weighted_items_used,
             power_used,
             space_used,
-            buildings_used
-        }
+            buildings_used,
+        },
     }
 }
-
