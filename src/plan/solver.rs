@@ -1,11 +1,15 @@
 use crate::game::{Recipe, Item, ItemValuePair};
 use crate::plan::{PlanConfig, NodeValue};
+use petgraph::dot::Dot;
 use petgraph::graph::{Graph, NodeIndex};
+use petgraph::visit::EdgeRef;
 use petgraph::{Directed, Incoming};
 use std::collections::HashMap;
+use std::iter::repeat;
+use std::slice::Iter;
 use thiserror::Error;
 
-use super::ScoredNodeValue;
+use super::{ScoredNodeValue};
 
 #[derive(Error, Debug)]
 pub enum SolverError {
@@ -23,10 +27,59 @@ pub fn solve<'a>(config: &PlanConfig<'a>) -> SolverResult<GraphType<'a>> {
     Solver::new(config).solve()
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct ItemBitSet(u16);
+
 struct Solver<'a, 'b> {
     config: &'b PlanConfig<'a>,
     recipes_by_output: HashMap<Item, Vec<&'a Recipe>>,
     recipes_by_input: HashMap<Item, Vec<&'a Recipe>>,
+}
+
+impl ItemBitSet {
+    pub fn new(item: Item) -> Self {
+        Self(Self::item_to_u16(item))
+    }
+
+    pub fn set(&mut self, item: Item) {
+        self.0 |= Self::item_to_u16(item)
+    }
+
+    pub fn contains(&self, item: Item) -> bool {
+        let item_bit = Self::item_to_u16(item);
+        self.0 & item_bit == item_bit
+    }
+
+    pub fn is_subset_of(&self, other: &Self) -> bool {
+        other.0 & self.0 == self.0
+    }
+
+    pub fn union(&self, other: &Self) -> Self {
+        Self(self.0 | other.0)
+    }
+
+    pub fn len(&self) -> u32 {
+        self.0.count_ones()
+    }
+
+    fn item_to_u16(item: Item) -> u16 {
+        match item {
+            Item::Bauxite => 1,
+            Item::CateriumOre => 2,
+            Item::Coal => 4,
+            Item::CopperOre => 8,
+            Item::CrudeOil => 16,
+            Item::IronOre => 32,
+            Item::Limestone => 64,
+            Item::NitrogenGas => 128,
+            Item::RawQuartz => 256,
+            Item::Sulfur =>  512,
+            Item::Uranium => 1024,
+            Item::Water => 2048,
+            Item::SAMOre => 4096,
+            _ => { panic!("Item `{}` not supported in ItemBitSet", item) },
+        }
+    }
 }
 
 impl<'a, 'b> Solver<'a, 'b> {
@@ -59,7 +112,19 @@ impl<'a, 'b> Solver<'a, 'b> {
     pub fn solve(&self) -> SolverResult<GraphType<'a>> {
         let mut graph = self.build_graph();
 
+        self.score_graph(&mut graph);
+
+        graph.node_indices().filter(|i| graph[*i].node.is_output()).for_each(|i| {
+            if let NodeValue::OutputNode(item, _) = graph[i].node {
+                println!("{}: {}", item.item, self.calculate_unique_inputs_count(&graph, i));
+            }
+            
+        });
+
+        // println!("{}", Dot::new(&graph));
+
         // get order outputs
+        //let ordered_outputs = Vec::new();
 
         // find optimal path
         todo!()
@@ -70,8 +135,8 @@ impl<'a, 'b> Solver<'a, 'b> {
 
         let mut nodes: Vec<NodeIndex> = Vec::new();
 
-        self.config.outputs.iter().for_each(|(item, value)| {
-            let output_node = ScoredNodeValue::from(NodeValue::new_output(ItemValuePair::new(*item, *value), false));
+        self.config.outputs.iter().for_each(|output| {
+            let output_node = ScoredNodeValue::from(NodeValue::new_output(*output, false));
             nodes.push(graph.add_node(output_node));
         });
 
@@ -154,6 +219,126 @@ impl<'a, 'b> Solver<'a, 'b> {
                 child_index
             })
             .collect()
+    }
+
+    fn score_graph(&self, graph: &mut ScoredGraphType<'a>) {
+        let output_nodes: Vec<NodeIndex> = graph.node_indices()
+            .filter(|i| graph[*i].node.is_output())
+            .collect();
+
+        for output_node in output_nodes {
+            self.score_node(graph, output_node);
+        }
+    }
+
+    // TODO: track visited nodes
+    fn score_node(&self, graph: &mut ScoredGraphType<'a>, node: NodeIndex) -> f64 {
+        if let Some(score) = graph[node].score {
+            return score;
+        }
+
+        let score = match graph[node].node {
+            NodeValue::InputNode(input) => 
+                if input.item.is_extractable() {
+                    let input_limit = self.config.input_limits.get(&input.item).unwrap();
+                    input.value / input_limit * 10000.0
+                } else {
+                    let input_limit = self.config.inputs.get(&input.item).unwrap();
+                    input.value / input_limit * 10000.0
+                },
+            NodeValue::ProductionNode( recipe, .. ) => {
+                let mut children = graph.neighbors_directed(node, Incoming).detach();
+
+                let mut scores_by_input: HashMap<Item, f64> = recipe.inputs.iter()
+                    .map(|input| (input.item, f64::INFINITY))
+                    .collect();
+
+                while let Some(child_node) = children.next_node(graph) {
+                    if let Some(edge) = graph.find_edge(child_node, node) {
+                        let score = self.score_node(graph, child_node);
+                        scores_by_input.entry(graph[edge].item)
+                            .and_modify(|e| { *e = e.min(score); })
+                            .or_insert(score);
+                    } else {
+                        panic!("Missing edge between {:?} and {:?}", node, child_node);
+                    }
+                }
+
+                scores_by_input.values().fold(0.0, |acc, f| acc + *f)
+            },
+            NodeValue::OutputNode( .. ) =>  {
+                let mut score = f64::INFINITY;
+                let mut children = graph.neighbors_directed(node, Incoming).detach();
+
+                while let Some(child_node) = children.next_node(graph) {
+                    let child_score = self.score_node(graph, child_node);
+
+                    
+                    if child_score < score {
+                        score = child_score
+                    }
+                }
+
+                score
+            }
+        };
+
+        graph[node].score = Some(score);
+        score
+    }
+
+    fn calculate_unique_inputs_count(&self, graph: &ScoredGraphType<'a>, node: NodeIndex) -> usize {
+        let mut unique_inputs = Vec::new();
+        self.calculate_inputs(graph, node).iter().for_each(|a| {
+            if !unique_inputs.iter().any(|b| a.is_subset_of(b) || b.is_subset_of(a)) {
+                unique_inputs.push(*a);
+            }
+        });
+
+        unique_inputs.len()
+    }
+
+    fn calculate_inputs(&self, graph: &ScoredGraphType<'a>, node: NodeIndex) -> Vec<ItemBitSet> {
+        match graph[node].node {
+            NodeValue::InputNode(input) => {
+                if input.item.is_extractable() {
+                    vec![ItemBitSet::new(input.item)]
+                } else {
+                    Vec::new()
+                }
+            },
+            NodeValue::ProductionNode( recipe, .. ) => {
+                let mut input_items: HashMap<Item, Vec<ItemBitSet>> = HashMap::new();
+                graph.edges_directed(node, Incoming)
+                    .for_each(|edge| {
+                        input_items.entry(edge.weight().item)
+                            .or_default()
+                            .extend(self.calculate_inputs(graph, edge.source()));
+                    });
+
+                let mut input_combinations: Vec<ItemBitSet> = Vec::new();
+                for inputs in input_items.values() {
+                    let prev_combinations = input_combinations;
+                    if prev_combinations.is_empty() {
+                        input_combinations = inputs.clone();
+                    } else {
+                        input_combinations = Vec::with_capacity(prev_combinations.len() * inputs.len());
+                        for prev_combination in &prev_combinations {
+                            for input in inputs {
+                                input_combinations.push(prev_combination.union(input));
+                            }
+                        }
+                    }
+                }
+
+                input_combinations
+            },
+            NodeValue::OutputNode( .. ) => {
+                graph.neighbors_directed(node, Incoming)
+                    .flat_map(|child_index| self.calculate_inputs(graph, child_index))
+                    .collect()
+            }
+        }
     }
 
     fn propagate_production_changes(

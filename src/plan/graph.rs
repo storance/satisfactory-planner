@@ -101,10 +101,20 @@ impl<'a> fmt::Display for NodeValue<'a> {
     }
 }
 
+impl<'a> fmt::Display for ScoredNodeValue<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(score) = self.score {
+            write!(f, "{}\nScore: {}\n", self.node, score)
+        } else {
+            write!(f, "{}\nScore: None\n", self.node)
+        }
+    }
+}
+
 impl <'a> From<NodeValue<'a>> for ScoredNodeValue<'a> {
-    fn from(value: NodeValue<'a>) -> Self {
+    fn from(node: NodeValue<'a>) -> Self {
         Self {
-            node: value,
+            node,
             score: None
         }
     }

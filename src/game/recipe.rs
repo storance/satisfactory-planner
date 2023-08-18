@@ -31,6 +31,7 @@ pub struct RecipeIO {
 
 #[derive(Debug)]
 pub struct Recipe {
+    pub id: u32,
     pub name: String,
     pub alternate: bool,
     pub outputs: Vec<RecipeIO>,
@@ -70,6 +71,7 @@ impl Recipe {
     pub fn load_from_file(file_path: &str) -> Result<Vec<Recipe>, RecipeError> {
         let file = File::open(file_path)?;
         let config: RecipesDefinition = serde_yaml::from_reader(file)?;
+        let mut id: u32 = 1;
 
         let mut recipes: Vec<Recipe> = Vec::with_capacity(config.recipes.len());
         for recipe in config.recipes {
@@ -122,10 +124,39 @@ impl Recipe {
                 return Err(RecipeError::DuplicateRecipeName(recipe.name));
             }
 
-            recipes.push(Self::from(recipe));
+            recipes.push(Self::from(recipe, &mut id));
         }
 
         Ok(recipes)
+    }
+
+    fn from(recipe: RecipeDefinition, next_id: &mut u32) -> Self {
+        let crafts_per_min = 60.0 / recipe.craft_time as f64;
+
+        let inputs = recipe
+            .inputs
+            .iter()
+            .map(|rv| RecipeIO::from(rv, crafts_per_min))
+            .collect();
+        let outputs = recipe
+            .outputs
+            .iter()
+            .map(|rv| RecipeIO::from(rv, crafts_per_min))
+            .collect();
+
+        let recipe_id = *next_id;
+        *next_id += 1;
+
+        Self {
+            id: recipe_id,
+            name: recipe.name,
+            alternate: recipe.alternate,
+            outputs,
+            inputs,
+            craft_time: recipe.craft_time,
+            power_multiplier: recipe.power_multiplier,
+            machine: recipe.machine,
+        }
     }
 
     pub fn calc_min_power(&self) -> f32 {
@@ -177,33 +208,6 @@ impl RecipeIO {
 
 impl PartialEq for Recipe {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-    }
-}
-
-impl From<RecipeDefinition> for Recipe {
-    fn from(recipe: RecipeDefinition) -> Self {
-        let crafts_per_min = 60.0 / recipe.craft_time as f64;
-
-        let inputs = recipe
-            .inputs
-            .iter()
-            .map(|rv| RecipeIO::from(rv, crafts_per_min))
-            .collect();
-        let outputs = recipe
-            .outputs
-            .iter()
-            .map(|rv| RecipeIO::from(rv, crafts_per_min))
-            .collect();
-
-        Self {
-            name: recipe.name,
-            alternate: recipe.alternate,
-            outputs,
-            inputs,
-            craft_time: recipe.craft_time,
-            power_multiplier: recipe.power_multiplier,
-            machine: recipe.machine,
-        }
+        self.id == other.id
     }
 }

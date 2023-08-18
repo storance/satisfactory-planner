@@ -34,7 +34,7 @@ struct PlanConfigDefinition {
 #[derive(Debug, Clone)]
 pub struct PlanConfig<'a> {
     pub inputs: HashMap<Item, f64>,
-    pub outputs: HashMap<Item, f64>,
+    pub outputs: Vec<ItemValuePair<f64>>,
     pub recipes: Vec<&'a Recipe>,
     pub input_limits: HashMap<Item, f64>,
 }
@@ -112,7 +112,7 @@ impl<'a> PlanConfig<'a> {
 
         Ok(PlanConfig {
             inputs: config.inputs.iter().map(ItemValuePair::to_tuple).collect(),
-            outputs: config.outputs.iter().map(ItemValuePair::to_tuple).collect(),
+            outputs: config.outputs,
             recipes,
             input_limits,
         })
