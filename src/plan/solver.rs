@@ -150,7 +150,7 @@ impl<'a, 'b> Solver<'a, 'b> where 'a: 'b {
 
             let new_child_index = Self::merge_optimal_path(src_graph, best_child_index, dest_graph)?;
             let edge_index = src_graph.find_edge(best_child_index, node_index).unwrap();
-            let input_value: ItemValuePair<f64> = src_graph[edge_index].into();
+            let input_value: ItemValuePair<f64> = src_graph[edge_index];
 
             if let Some(existing_edge) = dest_graph.find_edge(new_child_index, dest_node_index) {
                 dest_graph[existing_edge].value += input_value.value;
@@ -270,8 +270,8 @@ impl<'a> SingleOutputGraph<'a> {
     }
 }
 
-fn build_graph<'a, 'b>(
-    solver: &Solver<'a, 'b>,
+fn build_graph<'a>(
+    solver: &Solver<'a, '_>,
     output: ItemValuePair<f64>
 ) -> (ScoredGraphType<'a>, NodeIndex) {
     let mut graph = Graph::new();
@@ -293,8 +293,8 @@ fn build_graph<'a, 'b>(
     (graph, root_index)
 }
 
-fn build_graph_level<'a, 'b>(
-    solver: &Solver<'a, 'b>,
+fn build_graph_level<'a>(
+    solver: &Solver<'a, '_>,
     graph: &mut ScoredGraphType<'a>,
     node_indices: &Vec<NodeIndex>,
 ) -> Vec<NodeIndex> {
@@ -330,10 +330,10 @@ fn build_graph_level<'a, 'b>(
     next_nodes
 }
 
-fn create_input_node<'a>(
+fn create_input_node(
     item_value: ItemValuePair<f64>,
     parent_index: NodeIndex,
-    graph: &mut ScoredGraphType<'a>,
+    graph: &mut ScoredGraphType<'_>,
 ) -> NodeIndex {
     let child_node = ScoredNodeValue::from(NodeValue::new_input(item_value));
     let child_index = graph.add_node(child_node);
@@ -342,8 +342,8 @@ fn create_input_node<'a>(
     child_index
 }
 
-fn create_production_nodes<'a, 'b>(
-    solver: &Solver<'a, 'b>,
+fn create_production_nodes<'a>(
+    solver: &Solver<'a, '_>,
     item_value: ItemValuePair<f64>,
     parent_index: NodeIndex,
     graph: &mut ScoredGraphType<'a>,

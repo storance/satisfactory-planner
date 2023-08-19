@@ -153,7 +153,7 @@ pub fn find_production_node(graph: &GraphType<'_>, recipe: &Recipe) -> Option<No
 pub fn find_output_node(graph: &GraphType<'_>, item: Item) -> Option<NodeIndex> {
     graph
         .node_indices()
-        .find(|i| match graph[*i].into() {
+        .find(|i| match graph[*i] {
             NodeValue::Output(output, _) => item == output.item,
             _ => false
         })
