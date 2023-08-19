@@ -1,5 +1,5 @@
-use petgraph::{Graph, Directed};
 use petgraph::graph::NodeIndex;
+use petgraph::{Directed, Graph};
 
 use crate::game::{Item, ItemValuePair, Recipe};
 use std::fmt;
@@ -51,22 +51,22 @@ impl<'a> NodeValue<'a> {
 
     pub fn as_input_mut(&mut self) -> &mut ItemValuePair<f64> {
         match self {
-            NodeValue::Input( input) => input,
-            _ => panic!("NodeValue is not an InputNode")
+            NodeValue::Input(input) => input,
+            _ => panic!("NodeValue is not an InputNode"),
         }
     }
 
     pub fn as_output_mut(&mut self) -> (&mut ItemValuePair<f64>, &mut bool) {
         match self {
-            NodeValue::Output( output, by_product) => (output, by_product),
-            _ => panic!("NodeValue is not an OutputNode")
+            NodeValue::Output(output, by_product) => (output, by_product),
+            _ => panic!("NodeValue is not an OutputNode"),
         }
     }
 
     pub fn as_production_mut(&mut self) -> (&mut &'a Recipe, &mut f64) {
         match self {
-            NodeValue::Production( recipe, machine_count) => (recipe, machine_count),
-            _ => panic!("NodeValue is not an ProductionNode")
+            NodeValue::Production(recipe, machine_count) => (recipe, machine_count),
+            _ => panic!("NodeValue is not an ProductionNode"),
         }
     }
 }
@@ -103,7 +103,7 @@ impl<'a> fmt::Display for NodeValue<'a> {
     }
 }
 
-impl <'a> From<ScoredNodeValue<'a>> for NodeValue<'a> {
+impl<'a> From<ScoredNodeValue<'a>> for NodeValue<'a> {
     fn from(value: ScoredNodeValue<'a>) -> Self {
         value.node
     }
@@ -133,28 +133,22 @@ fn round(value: f64, places: u8) -> f64 {
 }
 
 pub fn find_input_node(graph: &GraphType<'_>, item: Item) -> Option<NodeIndex> {
-    graph
-        .node_indices()
-        .find(|i| match graph[*i] {
-            NodeValue::Input(input) => item == input.item,
-            _ => false
-        })
+    graph.node_indices().find(|i| match graph[*i] {
+        NodeValue::Input(input) => item == input.item,
+        _ => false,
+    })
 }
 
 pub fn find_production_node(graph: &GraphType<'_>, recipe: &Recipe) -> Option<NodeIndex> {
-    graph
-        .node_indices()
-        .find(|i| match graph[*i] {
-            NodeValue::Production(node_recipe, _) => recipe == node_recipe,
-            _ => false
-        })
+    graph.node_indices().find(|i| match graph[*i] {
+        NodeValue::Production(node_recipe, _) => recipe == node_recipe,
+        _ => false,
+    })
 }
 
 pub fn find_output_node(graph: &GraphType<'_>, item: Item) -> Option<NodeIndex> {
-    graph
-        .node_indices()
-        .find(|i| match graph[*i] {
-            NodeValue::Output(output, _) => item == output.item,
-            _ => false
-        })
+    graph.node_indices().find(|i| match graph[*i] {
+        NodeValue::Output(output, _) => item == output.item,
+        _ => false,
+    })
 }

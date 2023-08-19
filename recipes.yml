@@ -1,4 +1,8 @@
 recipes:
+  #
+  # Tier 1 + 2
+  #
+
   # Iron Ingot Recipes
   - name: Iron Ingot
     inputs:
@@ -51,35 +55,6 @@ recipes:
       - Iron Ingot: 15
     craft_time: 24
     machine: Refinery
-  # Alien Protein
-  - name: Hatcher Protein
-    inputs:
-      - Hatcher Remains: 1
-    outputs:
-      - Alien Protein: 1
-    craft_time: 3
-    machine: Constructor
-  - name: Hog Protein
-    inputs:
-      - Hog Remains: 1
-    outputs:
-      - Alien Protein: 1
-    craft_time: 3
-    machine: Constructor
-  - name: Spitter Protein
-    inputs:
-      - Plasma Spitter Remains: 1
-    outputs:
-      - Alien Protein: 1
-    craft_time: 3
-    machine: Constructor
-  - name: Stinger Protein
-    inputs:
-      - Stinger Remains: 1
-    outputs:
-      - Alien Protein: 1
-    craft_time: 3
-    machine: Constructor
   # Biomass
   - name: Biomass (Leaves)
     inputs:
@@ -125,6 +100,41 @@ recipes:
       - Color Cartridge: 10
     craft_time: 6
     machine: Constructor
+  # Concrete:
+  - name: Concrete
+    inputs:
+      - Limestone: 3
+    outputs:
+      - Concrete: 1
+    craft_time: 4
+    machine: Constructor
+  - name: Fine Concrete
+    alternate: true
+    inputs:
+      - Limestone: 12
+      - Silica: 3
+    outputs:
+      - Concrete: 10
+    craft_time: 24
+    machine: Assembler
+  - name: Rubber Concrete
+    alternate: true
+    inputs:
+      - Limestone: 10
+      - Rubber: 2
+    outputs:
+      - Concrete: 9
+    craft_time: 12
+    machine: Assembler
+  - name: Wet Concrete
+    alternate: true
+    inputs:
+      - Limestone: 6
+      - Water: 5
+    outputs:
+      - Concrete: 4
+    craft_time: 3
+    machine: Refinery
   # Iron Plate Recipes
   - name: Iron Plate
     inputs:
@@ -366,19 +376,375 @@ recipes:
       - Modular Frame: 3
     craft_time: 60
     machine: Assembler
+
+  #
+  # Tier 3 + 4
+  #
+
   # Steel Ingot
-
+  - name: Steel Ingot
+    inputs:
+      - Iron Ore: 3
+      - Coal: 3
+    outputs:
+      - Steel Ingot: 3
+    craft_time: 4
+    machine: Foundry
+  - name: Coke Steel Ingot
+    alternate: true
+    inputs:
+      - Iron Ore: 15
+      - Petroleum Coke: 15
+    outputs:
+      - Steel Ingot: 20
+    craft_time: 12
+    machine: Foundry
+  - name: Compacted Steel Ingot
+    alternate: true
+    inputs:
+      - Iron Ore: 6
+      - Compacted Coal: 3
+    outputs:
+      - Steel Ingot: 10
+    craft_time: 16
+    machine: Foundry
+  - name: Solid Steel Ingot
+    alternate: true
+    inputs:
+      - Iron Ingot: 2
+      - Coal: 2
+    outputs:
+      - Steel Ingot: 3
+    craft_time: 3
+    machine: Foundry
   # Steel Beam
-
+  - name: Steel Beam
+    inputs:
+      - Steel Ingot: 4
+    outputs:
+      - Steel Beam: 1
+    craft_time: 4
+    machine: Constructor
   # Steel Pipe
-
+  - name: Steel Pipe
+    inputs:
+      - Steel Ingot: 3
+    outputs:
+      - Steel Pipe: 2
+    craft_time: 6
+    machine: Constructor
   # Encased Industrial Beam
-
+  - name: Encased Industrial Beam
+    inputs:
+      - Steel Beam: 4
+      - Concrete: 5
+    outputs:
+      - Encased Industrial Beam: 1
+    craft_time: 10
+    machine: Assembler
+  - name: Encased Industrial Pipe
+    alternate: true
+    inputs:
+      - Steel Pipe: 7
+      - Concrete: 5
+    outputs:
+      - Encased Industrial Beam: 1
+    craft_time: 15
+    machine: Assembler
   # Stator
-
+  - name: Stator
+    inputs:
+      - Steel Pipe: 3
+      - Wire: 8
+    outputs:
+      - Stator: 1
+    craft_time: 12
+    machine: Assembler
+  - name: Quickwire Stator
+    alternate: true
+    inputs:
+      - Steel Pipe: 4
+      - Quickwire: 15
+    outputs:
+      - Stator: 2
+    craft_time: 15
+    machine: Assembler
   # Motor
+  - name: Motor
+    inputs:
+      - Rotor: 2
+      - Stator: 2
+    outputs:
+      - Motor: 1
+    craft_time: 12
+    machine: Assembler
+  - name: Electric Motor
+    alternate: true
+    inputs:
+      - Rotor: 2
+      - Electromagnetic Control Rod: 1
+    outputs:
+      - Motor: 2
+    craft_time: 16
+    machine: Assembler
+  - name: Rigour Motor
+    alternate: true
+    inputs:
+      - Rotor: 3
+      - Stator: 3
+      - Crystal Oscillator: 1
+    outputs:
+      - Motor: 6
+    craft_time: 48
+    machine: Manufacturer
+  # Heavy Modular Frame
+  - name: Heavy Modular Frame
+    inputs:
+      - Modular Frame: 5
+      - Steel Pipe: 15
+      - Encased Industrial Beam: 5
+      - Screw: 100
+    outputs:
+      - Heavy Modular Frame: 1
+    craft_time: 30
+    machine: Manufacturer
+  - name: Heavy Encased Frame
+    alternate: true
+    inputs:
+      - Modular Frame: 8
+      - Steel Pipe: 36
+      - Encased Industrial Beam: 10
+      - Concrete: 22
+    outputs:
+      - Heavy Modular Frame: 3
+    craft_time: 64
+    machine: Manufacturer
+  - name: Heavy Flexible Frame
+    alternate: true
+    inputs:
+      - Modular Frame: 5
+      - Rubber: 20
+      - Encased Industrial Beam: 3
+      - Screw: 104
+    outputs:
+      - Heavy Modular Frame: 1
+    craft_time: 16
+    machine: Manufacturer
 
-  # Heavy Industrial Frame
+  #
+  # Tier 5 + 6
+  #
+
+  #
+  # Tier 7 + 8
+  #
+
+  #
+  # MAM
+  # 
+
+  # Power Shard
+  - name: Power Shard (1)
+    inputs:
+      - Blue Power Slug: 1
+    outputs:
+      - Power Shard: 1
+    craft_time: 8
+    machine: Constructor
+  - name: Power Shard (2)
+    inputs:
+      - Yellow Power Slug: 1
+    outputs:
+      - Power Shard: 2
+    craft_time: 12
+    machine: Constructor
+  - name: Power Shard (5)
+    inputs:
+      - Purple Power Slug: 1
+    outputs:
+      - Power Shard: 5
+    craft_time: 24
+    machine: Constructor
+  # Alien Protein
+  - name: Hatcher Protein
+    inputs:
+      - Hatcher Remains: 1
+    outputs:
+      - Alien Protein: 1
+    craft_time: 3
+    machine: Constructor
+  - name: Hog Protein
+    inputs:
+      - Hog Remains: 1
+    outputs:
+      - Alien Protein: 1
+    craft_time: 3
+    machine: Constructor
+  - name: Spitter Protein
+    inputs:
+      - Plasma Spitter Remains: 1
+    outputs:
+      - Alien Protein: 1
+    craft_time: 3
+    machine: Constructor
+  - name: Stinger Protein
+    inputs:
+      - Stinger Remains: 1
+    outputs:
+      - Alien Protein: 1
+    craft_time: 3
+    machine: Constructor
+  # Alien DNA Capsule
+  - name: Alien DNA Capsule
+    inputs:
+      - Alien Protein: 1
+    outputs:
+      - Alien DNA Capsule: 1
+    craft_time: 6
+    machine: Constructor
+  # Quartz Crystal
+  - name: Quartz Crystal
+    inputs:
+      - Raw Quartz: 5
+    outputs:
+      - Quartz Crystal: 3
+    craft_time: 8
+    machine: Constructor
+  - name: Pure Quartz Crystal
+    alternate: true
+    inputs:
+      - Raw Quartz: 9
+      - Water: 5
+    outputs:
+      - Quartz Crystal: 7
+    craft_time: 8
+    machine: Refinery
+  # Silica
+  - name: Silica
+    inputs:
+      - Raw Quartz: 3
+    outputs:
+      - Silica: 5
+    craft_time: 8
+    machine: Constructor
+  - name: Cheap Silica
+    alternate: true
+    inputs:
+      - Raw Quartz: 3
+      - Limestone: 5
+    outputs:
+      - Silica: 7
+    craft_time: 16
+    machine: Assembler
+  # Crystal Oscillator
+  - name: Crystal Oscillator
+    inputs:
+      - Quartz Crystal: 36
+      - Cable: 28
+      - Reinforced Iron Plate: 5
+    outputs:
+      - Crystal Oscillator: 2
+    craft_time: 120
+    machine: Manufacturer
+  - name: Insulated Crystal Oscillator
+    alternate: true
+    inputs:
+      - Quartz Crystal: 10
+      - Rubber: 7
+      - AI Limiter: 1
+    outputs:
+      - Crystal Oscillator: 1
+    craft_time: 32
+    machine: Manufacturer
+  # Caterium Ingot
+  - name: Caterium Ingot
+    inputs:
+      - Caterium Ore: 3
+    outputs:
+      - Caterium Ingot: 1
+    craft_time: 4
+    machine: Smelter
+  - name: Pure Caterium Ingot
+    alternate: true
+    inputs:
+      - Caterium Ore: 2
+      - Water: 2
+    outputs:
+      - Caterium Ingot: 1
+    craft_time: 5
+    machine: Refinery
+  # Quickwire
+  - name: Quickwire
+    inputs:
+      - Caterium Ingot: 1
+    outputs:
+      - Quickwire: 5
+    craft_time: 5
+    machine: Constructor
+  - name: Fused Quickwire
+    alternate: true
+    inputs:
+      - Caterium Ingot: 1
+      - Copper Ingot: 5
+    outputs:
+      - Quickwire: 12
+    craft_time: 8
+    machine: Assembler
+  # AI Limiter
+  - name: AI Limiter
+    inputs:
+      - Copper Sheet: 5
+      - Quickwire: 20
+    outputs:
+      - AI Limiter: 1
+    craft_time: 12
+    machine: Assembler
+
+  # High-Speed Connector
+
+  # Supercomputer
+
+  # Compacted Coal
+  - name: Compacted Coal
+    alternate: true
+    inputs:
+      - Coal: 5
+      - Sulfur: 5
+    outputs:
+      - Compacted Coal: 5
+    craft_time: 12
+    machine: Assembler
+  # Black Powder
+  - name: Black Powder
+    inputs:
+      - Coal: 1
+      - Sulfur: 1
+    outputs:
+      - Black Powder: 2
+    craft_time: 4
+    machine: Assembler
+  - name: Fine Black Powder
+    alternate: true
+    inputs:
+      - Compacted Coal: 1
+      - Sulfur: 2
+    outputs:
+      - Black Powder: 4
+    craft_time: 16
+    machine: Assembler
+  # Smokeless Powder
+  - name: Smokeless Powder
+    inputs:
+      - Black Powder: 2
+      - Heavy Oil Residue: 1
+    outputs:
+      - Smokeless Powder: 2
+    craft_time: 6
+    machine: Refinery
+
+  #
+  # Space Elevator Parts
+  #
 
   # Smart Plating
   - name: Smart Plating

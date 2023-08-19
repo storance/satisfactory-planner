@@ -48,8 +48,7 @@ impl<'a> PlanConfig<'a> {
         let file = File::open(file_path)?;
         let config: PlanConfigDefinition = serde_yaml::from_reader(file)?;
 
-        let mut input_limits: HashMap<Item, f64> =
-            DEFAULT_LIMITS.iter().copied().collect();
+        let mut input_limits: HashMap<Item, f64> = DEFAULT_LIMITS.iter().copied().collect();
 
         for (item, value) in config.override_limits {
             if !item.is_extractable() {
@@ -85,7 +84,8 @@ impl<'a> PlanConfig<'a> {
                 recipes.extend(all_recipes.iter().filter(|r| r.alternate));
             } else {
                 let recipe = recipes_by_name
-                    .get(recipe_name).copied()
+                    .get(recipe_name)
+                    .copied()
                     .ok_or(PlanError::InvalidRecipe(recipe_name.clone()))?;
                 if !recipes.contains(&recipe) {
                     recipes.push(recipe);
@@ -97,7 +97,12 @@ impl<'a> PlanConfig<'a> {
         recipes.dedup();
 
         Ok(PlanConfig {
-            inputs: config.inputs.iter().copied().map(ItemValuePair::to_tuple).collect(),
+            inputs: config
+                .inputs
+                .iter()
+                .copied()
+                .map(ItemValuePair::to_tuple)
+                .collect(),
             outputs: config.outputs,
             recipes,
             input_limits,
