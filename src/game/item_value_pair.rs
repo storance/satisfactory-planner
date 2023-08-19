@@ -37,7 +37,7 @@ impl<V: Debug + Copy + Clone + PartialEq> ItemValuePair<V> {
         Self { item, value }
     }
 
-    pub fn to_tuple(&self) -> (Item, V) {
+    pub fn to_tuple(self) -> (Item, V) {
         (self.item, self.value)
     }
 }

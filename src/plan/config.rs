@@ -5,7 +5,7 @@ use std::fs::File;
 use crate::game::{Item, ItemValuePair, Recipe};
 use crate::plan::PlanError;
 
-static DEFAULT_LIMITS: [(Item, f64); 12] = [
+static DEFAULT_LIMITS: [(Item, f64); 13] = [
     (Item::Bauxite, 9780.0),
     (Item::CateriumOre, 12040.0),
     (Item::Coal, 30900.0),
@@ -18,6 +18,7 @@ static DEFAULT_LIMITS: [(Item, f64); 12] = [
     (Item::Sulfur, 6840.0),
     (Item::Uranium, 2100.0),
     (Item::Water, 9007199254740991.0),
+    (Item::SAMOre, 0.0),
 ];
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -39,24 +40,10 @@ pub struct PlanConfig<'a> {
     pub input_limits: HashMap<Item, f64>,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
-pub struct Score {
-    pub weighted_items_used: f64,
-    pub power_used: f64,
-    pub space_used: f64,
-    pub buildings_used: f64,
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct ScoredRecipe<'a> {
-    pub recipe: &'a Recipe,
-    pub score: Score,
-}
-
 impl<'a> PlanConfig<'a> {
     pub fn from_file(
         file_path: &str,
-        all_recipes: &'a Vec<Recipe>,
+        all_recipes: &'a [Recipe],
     ) -> Result<PlanConfig<'a>, PlanError> {
         let file = File::open(file_path)?;
         let config: PlanConfigDefinition = serde_yaml::from_reader(file)?;
@@ -110,7 +97,7 @@ impl<'a> PlanConfig<'a> {
         recipes.dedup();
 
         Ok(PlanConfig {
-            inputs: config.inputs.iter().map(ItemValuePair::to_tuple).collect(),
+            inputs: config.inputs.iter().copied().map(ItemValuePair::to_tuple).collect(),
             outputs: config.outputs,
             recipes,
             input_limits,
