@@ -1,7 +1,10 @@
 use petgraph::graph::NodeIndex;
 use petgraph::stable_graph::StableDiGraph;
 
-use crate::{game::{Item, ItemValuePair, Recipe}, utils::round_f64};
+use crate::{
+    game::{Item, ItemValuePair, Recipe},
+    utils::round_f64,
+};
 use std::fmt;
 
 #[derive(Debug, Copy, Clone)]
@@ -41,7 +44,10 @@ impl<'a> NodeValue<'a> {
     }
 
     pub fn new_production(recipe: &'a Recipe, machine_count: f64) -> Self {
-        NodeValue::Production(Production { recipe, machine_count })
+        NodeValue::Production(Production {
+            recipe,
+            machine_count,
+        })
     }
 
     pub fn is_input(&self) -> bool {
@@ -103,7 +109,7 @@ impl<'a> fmt::Display for NodeValue<'a> {
                     item_value.item,
                     round_f64(item_value.value, 3)
                 )
-            },
+            }
             NodeValue::Production(production) => {
                 write!(
                     f,
@@ -112,7 +118,7 @@ impl<'a> fmt::Display for NodeValue<'a> {
                     round_f64(production.machine_count, 3),
                     production.recipe.machine
                 )
-            },
+            }
             NodeValue::ByProduct(item_value, ..) => {
                 write!(
                     f,
@@ -120,7 +126,7 @@ impl<'a> fmt::Display for NodeValue<'a> {
                     item_value.item,
                     round_f64(item_value.value, 3)
                 )
-            },
+            }
             NodeValue::Output(item_value, ..) => {
                 write!(
                     f,
@@ -181,7 +187,10 @@ impl<'a> fmt::Display for ScoredNodeValue<'a> {
 
 impl<'a> From<NodeValue<'a>> for ScoredNodeValue<'a> {
     fn from(node: NodeValue<'a>) -> Self {
-        Self { node, score: f64::INFINITY }
+        Self {
+            node,
+            score: f64::INFINITY,
+        }
     }
 }
 

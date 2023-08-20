@@ -9,7 +9,10 @@ use std::collections::HashMap;
 
 use thiserror::Error;
 
-use super::{find_input_node, find_output_node, GraphType, ScoredGraphType, ScoredNodeValue, Production, find_by_product_node};
+use super::{
+    find_by_product_node, find_input_node, find_output_node, GraphType, Production,
+    ScoredGraphType, ScoredNodeValue,
+};
 
 #[derive(Error, Debug)]
 #[allow(dead_code)]
@@ -118,13 +121,16 @@ where
         node_index: NodeIndex,
         dest_graph: &mut GraphType<'a>,
     ) -> SolverResult<NodeIndex> {
-        let children_by_items: HashMap<Item, Vec<NodeIndex>> = group_children_by_input(node_index, src_graph);
+        let children_by_items: HashMap<Item, Vec<NodeIndex>> =
+            group_children_by_input(node_index, src_graph);
 
         let dest_node_index = match src_graph[node_index].node {
             NodeValue::Input(input) => Self::merge_input_node(input, dest_graph),
             NodeValue::Output(output) => Self::merge_output_node(output, dest_graph),
             NodeValue::ByProduct(output) => Self::merge_by_product_node(output, dest_graph),
-            NodeValue::Production(production) => Self::merge_production_node(production, dest_graph),
+            NodeValue::Production(production) => {
+                Self::merge_production_node(production, dest_graph)
+            }
         };
 
         for (item, children) in children_by_items {
@@ -162,10 +168,7 @@ where
         }
     }
 
-    fn merge_output_node(
-        output: ItemValuePair,
-        dest_graph: &mut GraphType<'a>,
-    ) -> NodeIndex {
+    fn merge_output_node(output: ItemValuePair, dest_graph: &mut GraphType<'a>) -> NodeIndex {
         if let Some(existing_index) = find_by_product_node(dest_graph, output.item) {
             dest_graph[existing_index].as_output_mut().value += output.value;
             existing_index
@@ -174,10 +177,7 @@ where
         }
     }
 
-    fn merge_by_product_node(
-        output: ItemValuePair,
-        dest_graph: &mut GraphType<'a>,
-    ) -> NodeIndex {
+    fn merge_by_product_node(output: ItemValuePair, dest_graph: &mut GraphType<'a>) -> NodeIndex {
         if let Some(existing_index) = find_output_node(dest_graph, output.item) {
             dest_graph[existing_index].as_output_mut().value += output.value;
             existing_index
@@ -191,7 +191,8 @@ where
         dest_graph: &mut GraphType<'a>,
     ) -> NodeIndex {
         if let Some(existing_index) = find_production_node(dest_graph, production.recipe) {
-            dest_graph[existing_index].as_production_mut().machine_count += production.machine_count;
+            dest_graph[existing_index].as_production_mut().machine_count +=
+                production.machine_count;
 
             existing_index
         } else {
@@ -259,10 +260,16 @@ fn build_graph_level<'a>(
 
     for node_index in node_indices {
         let inputs_to_solve: Vec<ItemValuePair> = match graph[*node_index].node {
-            NodeValue::Production(production) => production.recipe
+            NodeValue::Production(production) => production
+                .recipe
                 .inputs
                 .iter()
-                .map(|input| ItemValuePair::new(input.item, input.amount_per_minute * production.machine_count))
+                .map(|input| {
+                    ItemValuePair::new(
+                        input.item,
+                        input.amount_per_minute * production.machine_count,
+                    )
+                })
                 .collect(),
             NodeValue::Output(output, ..) => vec![output],
             _ => vec![],
@@ -307,13 +314,13 @@ fn create_production_nodes<'a>(
             let output = recipe.find_output_by_item(item_value.item).unwrap();
             let machine_count = item_value.value / output.amount_per_minute;
 
-            let child_node =
-                ScoredNodeValue::new_production(recipe, machine_count);
+            let child_node = ScoredNodeValue::new_production(recipe, machine_count);
             let child_index = graph.add_node(child_node);
             graph.add_edge(child_index, parent_index, item_value);
 
             child_index
-        }).collect()
+        })
+        .collect()
 }
 
 fn prune_impossible(node_index: NodeIndex, graph: &mut ScoredGraphType) -> bool {
@@ -323,7 +330,7 @@ fn prune_impossible(node_index: NodeIndex, graph: &mut ScoredGraphType) -> bool 
 
     let children_by_input = group_children_by_input(node_index, graph);
     let mut delete_self = false;
-    
+
     for children in children_by_input.values() {
         let remaining_children: Vec<NodeIndex> = children
             .iter()
@@ -353,14 +360,20 @@ fn prune_node(node_index: NodeIndex, graph: &mut ScoredGraphType) {
     graph.remove_node(node_index);
 }
 
-fn group_children_by_input(node_index: NodeIndex, graph: &ScoredGraphType) -> HashMap<Item, Vec<NodeIndex>> {
-    
-
+fn group_children_by_input(
+    node_index: NodeIndex,
+    graph: &ScoredGraphType,
+) -> HashMap<Item, Vec<NodeIndex>> {
     let expected_items = match graph[node_index].node {
         NodeValue::Input(..) => Vec::new(),
         NodeValue::Output(output) => vec![output.item],
         NodeValue::ByProduct(output) => vec![output.item],
-        NodeValue::Production(production) => production.recipe.inputs.iter().map(|input| input.item).collect(),
+        NodeValue::Production(production) => production
+            .recipe
+            .inputs
+            .iter()
+            .map(|input| input.item)
+            .collect(),
     };
 
     let mut children_by_items: HashMap<Item, Vec<NodeIndex>> = expected_items
@@ -382,7 +395,9 @@ fn group_children_by_input(node_index: NodeIndex, graph: &ScoredGraphType) -> Ha
 fn score_node(solver: &Solver, graph: &mut ScoredGraphType, node_index: NodeIndex) -> f64 {
     let score = match graph[node_index].node {
         NodeValue::Input(input) => score_input_node(solver, &input),
-        NodeValue::Production(production) => score_production_node(solver, graph, node_index, production.recipe),
+        NodeValue::Production(production) => {
+            score_production_node(solver, graph, node_index, production.recipe)
+        }
         NodeValue::Output(..) => score_output_node(solver, graph, node_index),
         NodeValue::ByProduct(..) => score_output_node(solver, graph, node_index),
     };
@@ -476,7 +491,7 @@ fn calc_input_combinations(graph: &ScoredGraphType, node_index: NodeIndex) -> Ve
             .neighbors_directed(node_index, Incoming)
             .flat_map(|child_index| calc_input_combinations(graph, child_index))
             .collect(),
-        NodeValue::ByProduct(..) => Vec::new()
+        NodeValue::ByProduct(..) => Vec::new(),
     }
 }
 

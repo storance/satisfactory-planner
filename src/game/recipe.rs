@@ -1,9 +1,9 @@
 use crate::game::{Item, ItemValuePair, Machine, MachineIO};
+use anyhow;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::File;
 use thiserror::Error;
-use anyhow;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct RecipeDefinition {
@@ -74,8 +74,12 @@ impl Recipe {
     fn convert(config: RecipesDefinition) -> Result<Vec<Recipe>, RecipeError> {
         let mut converted_recipes: Vec<Recipe> = Vec::with_capacity(config.recipes.len());
         for recipe in config.recipes {
-            Self::check_for_duplicate_io(&recipe.inputs, |item| RecipeError::DuplicateInput(recipe.name.clone(), item))?;
-            Self::check_for_duplicate_io(&recipe.outputs, |item| RecipeError::DuplicateOutput(recipe.name.clone(), item))?;
+            Self::check_for_duplicate_io(&recipe.inputs, |item| {
+                RecipeError::DuplicateInput(recipe.name.clone(), item)
+            })?;
+            Self::check_for_duplicate_io(&recipe.outputs, |item| {
+                RecipeError::DuplicateOutput(recipe.name.clone(), item)
+            })?;
 
             let inputs_count = MachineIO::from(&recipe.inputs);
             let outputs_count = MachineIO::from(&recipe.outputs);
@@ -114,11 +118,10 @@ impl Recipe {
         Ok(converted_recipes)
     }
 
-    fn check_for_duplicate_io<F>(
-        io: &[ItemValuePair],
-        err: F) -> Result<(), RecipeError> 
-        where F: FnOnce(Item) -> RecipeError {
-
+    fn check_for_duplicate_io<F>(io: &[ItemValuePair], err: F) -> Result<(), RecipeError>
+    where
+        F: FnOnce(Item) -> RecipeError,
+    {
         let mut unique_items: HashSet<Item> = HashSet::new();
 
         for item_value in io {
@@ -201,7 +204,7 @@ impl RecipeIO {
         Self {
             item: iv.item,
             amount: iv.value,
-            amount_per_minute: iv.value as f64 * crafts_per_minute,
+            amount_per_minute: iv.value * crafts_per_minute,
         }
     }
 
@@ -224,19 +227,25 @@ impl Eq for Recipe {}
 
 #[cfg(test)]
 mod tests {
-    use std::vec;
     use crate::utils::round_f32;
+    use std::vec;
 
     use super::*;
 
     #[test]
     fn recipeio_to_amount() {
-        assert_eq!(RecipeIO::new(Item::IronIngot, 1.0, 15.0).to_amount(), ItemValuePair::new(Item::IronIngot, 1.0));
+        assert_eq!(
+            RecipeIO::new(Item::IronIngot, 1.0, 15.0).to_amount(),
+            ItemValuePair::new(Item::IronIngot, 1.0)
+        );
     }
 
     #[test]
     fn recipeio_to_amount_per_minute() {
-        assert_eq!(RecipeIO::new(Item::IronIngot, 1.0, 15.0).to_amount_per_minute(), ItemValuePair::new(Item::IronIngot, 15.0));
+        assert_eq!(
+            RecipeIO::new(Item::IronIngot, 1.0, 15.0).to_amount_per_minute(),
+            ItemValuePair::new(Item::IronIngot, 15.0)
+        );
     }
 
     #[test]
@@ -248,12 +257,11 @@ mod tests {
             outputs: vec![ItemValuePair::new(Item::IronIngot, 1.0)],
             craft_time: 4,
             power_multiplier: 1.0,
-            machine: Machine::Smelter
+            machine: Machine::Smelter,
         };
 
-
         let result = Recipe::convert(RecipesDefinition {
-            recipes: vec![recipe_def]
+            recipes: vec![recipe_def],
         });
 
         let expected_recipe = Recipe {
@@ -263,7 +271,7 @@ mod tests {
             outputs: vec![RecipeIO::new(Item::IronIngot, 1.0, 15.0)],
             craft_time: 4,
             power_multiplier: 1.0,
-            machine: Machine::Smelter
+            machine: Machine::Smelter,
         };
 
         assert_eq!(result, Ok(vec![expected_recipe]));
@@ -274,22 +282,29 @@ mod tests {
         let recipe_def = RecipeDefinition {
             name: String::from("Beacon"),
             alternate: false,
-            inputs: vec![ItemValuePair::new(Item::IronPlate, 3.0),
+            inputs: vec![
+                ItemValuePair::new(Item::IronPlate, 3.0),
                 ItemValuePair::new(Item::IronRod, 1.0),
                 ItemValuePair::new(Item::Wire, 15.0),
-                ItemValuePair::new(Item::IronPlate, 2.0)],
+                ItemValuePair::new(Item::IronPlate, 2.0),
+            ],
             outputs: vec![ItemValuePair::new(Item::Beacon, 1.0)],
             craft_time: 4,
             power_multiplier: 1.0,
-            machine: Machine::Manufacturer
+            machine: Machine::Manufacturer,
         };
 
-
         let result = Recipe::convert(RecipesDefinition {
-            recipes: vec![recipe_def]
+            recipes: vec![recipe_def],
         });
 
-        assert_eq!(result, Err(RecipeError::DuplicateInput("Beacon".into(), Item::IronPlate)));
+        assert_eq!(
+            result,
+            Err(RecipeError::DuplicateInput(
+                "Beacon".into(),
+                Item::IronPlate
+            ))
+        );
     }
 
     #[test]
@@ -297,22 +312,31 @@ mod tests {
         let recipe_def = RecipeDefinition {
             name: String::from("Encased Uranium Cell"),
             alternate: false,
-            inputs: vec![ItemValuePair::new(Item::Uranium, 10.0),
-                 ItemValuePair::new(Item::Concrete, 3.0),
-                 ItemValuePair::new(Item::SulfuricAcid, 8.0)],
-            outputs: vec![ItemValuePair::new(Item::EncasedUraniumCell, 5.0),
-                ItemValuePair::new(Item::EncasedUraniumCell, 2.0)],
+            inputs: vec![
+                ItemValuePair::new(Item::Uranium, 10.0),
+                ItemValuePair::new(Item::Concrete, 3.0),
+                ItemValuePair::new(Item::SulfuricAcid, 8.0),
+            ],
+            outputs: vec![
+                ItemValuePair::new(Item::EncasedUraniumCell, 5.0),
+                ItemValuePair::new(Item::EncasedUraniumCell, 2.0),
+            ],
             craft_time: 4,
             power_multiplier: 1.0,
-            machine: Machine::Blender
+            machine: Machine::Blender,
         };
 
-
         let result = Recipe::convert(RecipesDefinition {
-            recipes: vec![recipe_def]
+            recipes: vec![recipe_def],
         });
 
-        assert_eq!(result, Err(RecipeError::DuplicateOutput("Encased Uranium Cell".into(), Item::EncasedUraniumCell)));
+        assert_eq!(
+            result,
+            Err(RecipeError::DuplicateOutput(
+                "Encased Uranium Cell".into(),
+                Item::EncasedUraniumCell
+            ))
+        );
     }
 
     #[test]
@@ -324,12 +348,11 @@ mod tests {
             outputs: vec![ItemValuePair::new(Item::IronIngot, 1.0)],
             craft_time: 4,
             power_multiplier: 1.0,
-            machine: Machine::Smelter
+            machine: Machine::Smelter,
         };
 
-
         let result = Recipe::convert(RecipesDefinition {
-            recipes: vec![recipe_def]
+            recipes: vec![recipe_def],
         });
 
         assert_eq!(result, Err(RecipeError::MissingInputs("Iron Ingot".into())));
@@ -344,15 +367,17 @@ mod tests {
             outputs: vec![],
             craft_time: 4,
             power_multiplier: 1.0,
-            machine: Machine::Smelter
+            machine: Machine::Smelter,
         };
 
-
         let result = Recipe::convert(RecipesDefinition {
-            recipes: vec![recipe_def]
+            recipes: vec![recipe_def],
         });
 
-        assert_eq!(result, Err(RecipeError::MissingOutputs("Iron Ingot".into())));
+        assert_eq!(
+            result,
+            Err(RecipeError::MissingOutputs("Iron Ingot".into()))
+        );
     }
 
     #[test]
@@ -360,21 +385,29 @@ mod tests {
         let recipe_def = RecipeDefinition {
             name: String::from("Encased Uranium Cell"),
             alternate: false,
-            inputs: vec![ItemValuePair::new(Item::Uranium, 10.0),
-                 ItemValuePair::new(Item::Concrete, 3.0),
-                 ItemValuePair::new(Item::IronPlate, 8.0)],
+            inputs: vec![
+                ItemValuePair::new(Item::Uranium, 10.0),
+                ItemValuePair::new(Item::Concrete, 3.0),
+                ItemValuePair::new(Item::IronPlate, 8.0),
+            ],
             outputs: vec![ItemValuePair::new(Item::EncasedUraniumCell, 5.0)],
             craft_time: 4,
             power_multiplier: 1.0,
-            machine: Machine::Blender
+            machine: Machine::Blender,
         };
 
-
         let result = Recipe::convert(RecipesDefinition {
-            recipes: vec![recipe_def]
+            recipes: vec![recipe_def],
         });
 
-        assert_eq!(result, Err(RecipeError::InvalidInputs("Encased Uranium Cell".into(), Machine::Blender, MachineIO::new(3, 0))));
+        assert_eq!(
+            result,
+            Err(RecipeError::InvalidInputs(
+                "Encased Uranium Cell".into(),
+                Machine::Blender,
+                MachineIO::new(3, 0)
+            ))
+        );
     }
 
     #[test]
@@ -382,22 +415,32 @@ mod tests {
         let recipe_def = RecipeDefinition {
             name: String::from("Encased Uranium Cell"),
             alternate: false,
-            inputs: vec![ItemValuePair::new(Item::Uranium, 10.0),
-                 ItemValuePair::new(Item::Concrete, 3.0),
-                 ItemValuePair::new(Item::SulfuricAcid, 8.0)],
-            outputs: vec![ItemValuePair::new(Item::EncasedUraniumCell, 5.0),
-                ItemValuePair::new(Item::UraniumFuelRod, 2.0)],
+            inputs: vec![
+                ItemValuePair::new(Item::Uranium, 10.0),
+                ItemValuePair::new(Item::Concrete, 3.0),
+                ItemValuePair::new(Item::SulfuricAcid, 8.0),
+            ],
+            outputs: vec![
+                ItemValuePair::new(Item::EncasedUraniumCell, 5.0),
+                ItemValuePair::new(Item::UraniumFuelRod, 2.0),
+            ],
             craft_time: 4,
             power_multiplier: 1.0,
-            machine: Machine::Blender
+            machine: Machine::Blender,
         };
 
-
         let result = Recipe::convert(RecipesDefinition {
-            recipes: vec![recipe_def]
+            recipes: vec![recipe_def],
         });
 
-        assert_eq!(result, Err(RecipeError::InvalidOutputs("Encased Uranium Cell".into(), Machine::Blender, MachineIO::new(2, 0))));
+        assert_eq!(
+            result,
+            Err(RecipeError::InvalidOutputs(
+                "Encased Uranium Cell".into(),
+                Machine::Blender,
+                MachineIO::new(2, 0)
+            ))
+        );
     }
 
     #[test]
@@ -409,7 +452,7 @@ mod tests {
             outputs: vec![RecipeIO::new(Item::IronIngot, 1.0, 15.0)],
             craft_time: 4,
             power_multiplier: 1.0,
-            machine: Machine::Smelter
+            machine: Machine::Smelter,
         };
 
         assert_eq!(recipe.calc_min_power(), Machine::Smelter.min_power() as f32);
@@ -420,12 +463,14 @@ mod tests {
         let recipe = Recipe {
             name: String::from("Nuclear Pasta"),
             alternate: false,
-            inputs: vec![RecipeIO::new(Item::CopperPowder, 200.0, 100.0),
-                RecipeIO::new(Item::PressureConversionCube, 1.0, 0.5)],
+            inputs: vec![
+                RecipeIO::new(Item::CopperPowder, 200.0, 100.0),
+                RecipeIO::new(Item::PressureConversionCube, 1.0, 0.5),
+            ],
             outputs: vec![RecipeIO::new(Item::NuclearPasta, 1.0, 0.5)],
             craft_time: 120,
             power_multiplier: 2.0,
-            machine: Machine::ParticleAccelerator
+            machine: Machine::ParticleAccelerator,
         };
 
         assert_eq!(recipe.calc_min_power(), 500.0);
@@ -440,7 +485,7 @@ mod tests {
             outputs: vec![RecipeIO::new(Item::IronIngot, 1.0, 15.0)],
             craft_time: 4,
             power_multiplier: 1.0,
-            machine: Machine::Smelter
+            machine: Machine::Smelter,
         };
 
         assert_eq!(recipe.calc_max_power(), Machine::Smelter.max_power() as f32);
@@ -451,12 +496,14 @@ mod tests {
         let recipe = Recipe {
             name: String::from("Nuclear Pasta"),
             alternate: false,
-            inputs: vec![RecipeIO::new(Item::CopperPowder, 200.0, 100.0),
-                RecipeIO::new(Item::PressureConversionCube, 1.0, 0.5)],
+            inputs: vec![
+                RecipeIO::new(Item::CopperPowder, 200.0, 100.0),
+                RecipeIO::new(Item::PressureConversionCube, 1.0, 0.5),
+            ],
             outputs: vec![RecipeIO::new(Item::NuclearPasta, 1.0, 0.5)],
             craft_time: 120,
             power_multiplier: 2.0,
-            machine: Machine::ParticleAccelerator
+            machine: Machine::ParticleAccelerator,
         };
 
         assert_eq!(recipe.calc_max_power(), 1500.0);
@@ -467,12 +514,14 @@ mod tests {
         let recipe = Recipe {
             name: String::from("Plutonium Pellet"),
             alternate: false,
-            inputs: vec![RecipeIO::new(Item::NonFissileUranium, 100.0, 100.0),
-                RecipeIO::new(Item::UraniumWaste, 25.0, 25.0)],
+            inputs: vec![
+                RecipeIO::new(Item::NonFissileUranium, 100.0, 100.0),
+                RecipeIO::new(Item::UraniumWaste, 25.0, 25.0),
+            ],
             outputs: vec![RecipeIO::new(Item::PlutoniumPellet, 30.0, 30.0)],
             craft_time: 60,
             power_multiplier: 1.0,
-            machine: Machine::ParticleAccelerator
+            machine: Machine::ParticleAccelerator,
         };
 
         assert_eq!(recipe.calc_avg_power(), 500.0);
@@ -483,12 +532,14 @@ mod tests {
         let recipe = Recipe {
             name: String::from("Nuclear Pasta"),
             alternate: false,
-            inputs: vec![RecipeIO::new(Item::CopperPowder, 200.0, 100.0),
-                RecipeIO::new(Item::PressureConversionCube, 1.0, 0.5)],
+            inputs: vec![
+                RecipeIO::new(Item::CopperPowder, 200.0, 100.0),
+                RecipeIO::new(Item::PressureConversionCube, 1.0, 0.5),
+            ],
             outputs: vec![RecipeIO::new(Item::NuclearPasta, 1.0, 0.5)],
             craft_time: 120,
             power_multiplier: 2.0,
-            machine: Machine::ParticleAccelerator
+            machine: Machine::ParticleAccelerator,
         };
 
         assert_eq!(recipe.calc_avg_power(), 1000.0);
@@ -503,7 +554,7 @@ mod tests {
             outputs: vec![RecipeIO::new(Item::IronIngot, 1.0, 15.0)],
             craft_time: 4,
             power_multiplier: 1.0,
-            machine: Machine::Smelter
+            machine: Machine::Smelter,
         };
 
         assert_eq!(round_f32(recipe.calc_overclocked_avg_power(50.0), 1), 1.6);

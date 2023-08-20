@@ -1,8 +1,8 @@
+extern crate anyhow;
 extern crate petgraph;
 extern crate serde;
 extern crate serde_yaml;
 extern crate thiserror;
-extern crate anyhow;
 
 use crate::game::{Item, Machine, Recipe};
 use crate::plan::{solve, PlanConfig};
