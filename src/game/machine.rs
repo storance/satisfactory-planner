@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Formatter;
 use std::{fmt, iter};
 
+use super::ItemValuePair;
+
 machine_definition!(
     Machine {
         Smelter(name: "Smelter", power: 4, inputs: [Item], outputs: [Item]),
@@ -17,7 +19,7 @@ machine_definition!(
     }
 );
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct MachineIO {
     pub items: u8,
     pub fluids: u8,
@@ -30,6 +32,36 @@ impl MachineIO {
 
     pub fn zero() -> Self {
         Self::new(0, 0)
+    }
+
+    pub fn total(&self) -> u8 {
+        self.fluids + self.items
+    }
+
+    pub fn is_zero(&self) -> bool {
+        self.total() == 0
+    }
+
+    pub fn is_greater(&self, other: &Self) -> bool {
+        self.items > other.items || self.fluids > other.fluids
+    }
+}
+
+impl From<&[ItemValuePair]> for MachineIO {
+    fn from(value: &[ItemValuePair]) -> MachineIO {
+        value
+            .iter()
+            .fold(MachineIO::zero(), |mut acc, item_value| {
+                acc.fluids += item_value.item.is_fluid() as u8;
+                acc.items += (!item_value.item.is_fluid()) as u8;
+                acc
+            })
+    }
+}
+
+impl From<&Vec<ItemValuePair>> for MachineIO {
+    fn from(value: &Vec<ItemValuePair>) -> MachineIO {
+        Self::from(value.as_slice())
     }
 }
 
@@ -47,5 +79,80 @@ impl fmt::Display for MachineIO {
         });
 
         write!(f, "[{}]", formatted_str)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::game::Item;
+
+    use super::*;
+
+    #[test]
+    fn machineio_display() {
+        assert_eq!(format!("{}", MachineIO::new(2, 2)), "[Item, Item, Fluid, Fluid]");
+        assert_eq!(format!("{}", MachineIO::new(1, 0)), "[Item]");
+        assert_eq!(format!("{}", MachineIO::new(0, 3)), "[Fluid, Fluid, Fluid]");
+    }
+
+    #[test]
+    fn machineio_from() {
+        assert_eq!(MachineIO::from(&vec![
+            ItemValuePair::new(Item::IronPlate, 2.0),
+            ItemValuePair::new(Item::IronRod, 3.0),
+            ItemValuePair::new(Item::Water, 4.0),
+            ItemValuePair::new(Item::SulfuricAcid, 4.0),
+        ]), MachineIO::new(2, 2));
+
+        assert_eq!(MachineIO::from(&vec![
+            ItemValuePair::new(Item::IronPlate, 2.0),
+            ItemValuePair::new(Item::IronRod, 3.0)
+        ]), MachineIO::new(2, 0));
+
+        assert_eq!(MachineIO::from(&vec![
+            ItemValuePair::new(Item::Water, 4.0),
+            ItemValuePair::new(Item::SulfuricAcid, 4.0),
+        ]), MachineIO::new(0, 2));
+    }
+
+    #[test]
+    fn machineio_zero() {
+        assert_eq!(MachineIO::new(0, 0), MachineIO::zero());
+    }
+
+    #[test]
+    fn machineio_total() {
+        assert_eq!(MachineIO::new(2, 1).total(), 3);
+        assert_eq!(MachineIO::new(2, 0).total(), 2);
+        assert_eq!(MachineIO::new(0, 3).total(), 3);
+        assert_eq!(MachineIO::new(0, 0).total(), 0);
+    }
+
+    #[test]
+    fn machineio_is_empty() {
+        assert_eq!(MachineIO::new(2, 1).is_zero(), false);
+        assert_eq!(MachineIO::new(2, 0).is_zero(), false);
+        assert_eq!(MachineIO::new(3, 0).is_zero(), false);
+        assert_eq!(MachineIO::new(0, 0).is_zero(), true);
+    }
+
+    #[test]
+    fn machineio_is_greater() {
+        assert_eq!(MachineIO::new(2, 0).is_greater(&MachineIO::new(2, 2)), false);
+        assert_eq!(MachineIO::new(2, 1).is_greater(&MachineIO::new(2, 2)), false);
+        assert_eq!(MachineIO::new(2, 2).is_greater(&MachineIO::new(2, 2)), false);
+        assert_eq!(MachineIO::new(2, 3).is_greater(&MachineIO::new(2, 2)), true);
+
+        
+        assert_eq!(MachineIO::new(0, 2).is_greater(&MachineIO::new(2, 2)), false);
+        assert_eq!(MachineIO::new(1, 2).is_greater(&MachineIO::new(2, 2)), false);
+        assert_eq!(MachineIO::new(2, 2).is_greater(&MachineIO::new(2, 2)), false);
+        assert_eq!(MachineIO::new(3, 2).is_greater(&MachineIO::new(2, 2)), true);
+
+        assert_eq!(MachineIO::new(1, 0).is_greater(&MachineIO::new(1, 0)), false);
+        assert_eq!(MachineIO::new(2, 0).is_greater(&MachineIO::new(1, 0)), true);
+
+        assert_eq!(MachineIO::new(0, 1).is_greater(&MachineIO::new(0, 1)), false);
+        assert_eq!(MachineIO::new(0, 2).is_greater(&MachineIO::new(0, 1)), true);
     }
 }

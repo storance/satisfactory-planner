@@ -24,9 +24,9 @@ static DEFAULT_LIMITS: [(Item, f64); 13] = [
 #[derive(Debug, Serialize, Deserialize)]
 struct PlanConfigDefinition {
     #[serde(default)]
-    inputs: Vec<ItemValuePair<f64>>,
+    inputs: Vec<ItemValuePair>,
     #[serde(default)]
-    outputs: Vec<ItemValuePair<f64>>,
+    outputs: Vec<ItemValuePair>,
     enabled_recipes: Vec<String>,
     #[serde(default)]
     override_limits: HashMap<Item, f64>,
@@ -35,7 +35,7 @@ struct PlanConfigDefinition {
 #[derive(Debug, Clone)]
 pub struct PlanConfig<'a> {
     pub inputs: HashMap<Item, f64>,
-    pub outputs: Vec<ItemValuePair<f64>>,
+    pub outputs: Vec<ItemValuePair>,
     pub recipes: Vec<&'a Recipe>,
     pub input_limits: HashMap<Item, f64>,
 }
@@ -101,7 +101,7 @@ impl<'a> PlanConfig<'a> {
                 .inputs
                 .iter()
                 .copied()
-                .map(ItemValuePair::to_tuple)
+                .map(|iv| (iv.item, iv.value))
                 .collect(),
             outputs: config.outputs,
             recipes,
