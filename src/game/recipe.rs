@@ -208,11 +208,12 @@ impl RecipeIO {
         }
     }
 
-    pub fn to_amount_per_minute(self) -> ItemValuePair {
+    pub fn to_amount_per_minute_pair(self) -> ItemValuePair {
         ItemValuePair::new(self.item, self.amount_per_minute)
     }
 
-    pub fn to_amount(self) -> ItemValuePair {
+    #[allow(dead_code)]
+    pub fn to_amount_pair(self) -> ItemValuePair {
         ItemValuePair::new(self.item, self.amount)
     }
 }
@@ -235,7 +236,7 @@ mod tests {
     #[test]
     fn recipeio_to_amount() {
         assert_eq!(
-            RecipeIO::new(Item::IronIngot, 1.0, 15.0).to_amount(),
+            RecipeIO::new(Item::IronIngot, 1.0, 15.0).to_amount_pair(),
             ItemValuePair::new(Item::IronIngot, 1.0)
         );
     }
@@ -243,7 +244,7 @@ mod tests {
     #[test]
     fn recipeio_to_amount_per_minute() {
         assert_eq!(
-            RecipeIO::new(Item::IronIngot, 1.0, 15.0).to_amount_per_minute(),
+            RecipeIO::new(Item::IronIngot, 1.0, 15.0).to_amount_per_minute_pair(),
             ItemValuePair::new(Item::IronIngot, 15.0)
         );
     }

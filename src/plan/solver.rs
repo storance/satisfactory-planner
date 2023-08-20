@@ -264,12 +264,7 @@ fn build_graph_level<'a>(
                 .recipe
                 .inputs
                 .iter()
-                .map(|input| {
-                    ItemValuePair::new(
-                        input.item,
-                        input.amount_per_minute * production.machine_count,
-                    )
-                })
+                .map(|input| input.to_amount_per_minute_pair() * production.machine_count)
                 .collect(),
             NodeValue::Output(output, ..) => vec![output],
             _ => vec![],
