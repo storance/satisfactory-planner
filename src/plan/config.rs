@@ -1,8 +1,11 @@
-use serde::{Deserialize, Serialize};
+use indexmap::IndexMap;
+use serde::de::{MapAccess, Visitor};
+use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
+use std::fmt;
 use std::fs::File;
 
-use crate::game::{Item, ItemValuePair, Recipe};
+use crate::game::{Item, Recipe};
 use crate::plan::PlanError;
 
 static DEFAULT_LIMITS: [(Item, f64); 13] = [
@@ -21,91 +24,188 @@ static DEFAULT_LIMITS: [(Item, f64); 13] = [
     (Item::SAMOre, 0.0),
 ];
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
+enum RecipeMatcher {
+    IncludeByAlternate(bool),
+    IncludeByName(String),
+    IncludeByOutputItem(Item),
+    ExcludeByName(String),
+}
+
+impl RecipeMatcher {
+    pub fn all_matching(&self, all_recipes: &[Recipe]) -> Result<Vec<Recipe>, PlanError> {
+        self.to_result(
+            all_recipes
+                .iter()
+                .cloned()
+                .filter(|recipe| self.matches(recipe))
+                .collect(),
+        )
+    }
+
+    pub fn is_include(&self) -> bool {
+        match self {
+            Self::IncludeByAlternate(..) => true,
+            Self::IncludeByName(..) => true,
+            Self::IncludeByOutputItem(..) => true,
+            Self::ExcludeByName(..) => false,
+        }
+    }
+
+    fn to_result(&self, result: Vec<Recipe>) -> Result<Vec<Recipe>, PlanError> {
+        match self {
+            Self::IncludeByName(name) => {
+                if result.is_empty() {
+                    Err(PlanError::InvalidRecipe(name.clone()))
+                } else {
+                    Ok(result)
+                }
+            }
+            Self::ExcludeByName(name) => {
+                if result.is_empty() {
+                    Err(PlanError::InvalidRecipe(name.clone()))
+                } else {
+                    Ok(result)
+                }
+            }
+            _ => Ok(result),
+        }
+    }
+
+    pub fn matches(&self, recipe: &Recipe) -> bool {
+        match self {
+            Self::IncludeByAlternate(is_alt) => recipe.alternate == *is_alt,
+            Self::IncludeByName(recipe_name) => recipe.name.eq_ignore_ascii_case(recipe_name),
+            Self::IncludeByOutputItem(item) => recipe.has_output_item(*item),
+            Self::ExcludeByName(recipe_name) => recipe.name.eq_ignore_ascii_case(recipe_name),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for RecipeMatcher {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_any(RecipeMatcherVisitor)
+    }
+}
+
+struct RecipeMatcherVisitor;
+
+impl<'de> Visitor<'de> for RecipeMatcherVisitor {
+    type Value = RecipeMatcher;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            formatter,
+            "base, alternates, recipe name, output: item name, exclude: recipe name"
+        )
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        if v.eq_ignore_ascii_case("base") {
+            Ok(RecipeMatcher::IncludeByAlternate(false))
+        } else if v.eq_ignore_ascii_case("alternates") || v.eq_ignore_ascii_case("alts") {
+            Ok(RecipeMatcher::IncludeByAlternate(true))
+        } else {
+            Ok(RecipeMatcher::IncludeByName(v.into()))
+        }
+    }
+
+    fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+    where
+        M: MapAccess<'de>,
+    {
+        if let Some(field) = map.next_key::<&str>()? {
+            if field.eq_ignore_ascii_case("exclude") {
+                Ok(RecipeMatcher::IncludeByOutputItem(map.next_value()?))
+            } else if field.eq_ignore_ascii_case("output") {
+                Ok(RecipeMatcher::ExcludeByName(map.next_value()?))
+            } else {
+                Err(serde::de::Error::custom(format!(
+                    "Unknown recipe matcher {}",
+                    field
+                )))
+            }
+        } else {
+            Err(serde::de::Error::custom("Missing matcher and value"))
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
 struct PlanConfigDefinition {
     #[serde(default)]
-    inputs: Vec<ItemValuePair>,
-    #[serde(default)]
-    outputs: Vec<ItemValuePair>,
-    enabled_recipes: Vec<String>,
-    #[serde(default)]
-    override_limits: HashMap<Item, f64>,
+    inputs: HashMap<Item, f64>,
+    outputs: IndexMap<Item, f64>,
+    enabled_recipes: Vec<RecipeMatcher>,
 }
 
 #[derive(Debug, Clone)]
-pub struct PlanConfig<'a> {
+pub struct PlanConfig {
     pub inputs: HashMap<Item, f64>,
-    pub outputs: Vec<ItemValuePair>,
-    pub recipes: Vec<&'a Recipe>,
-    pub input_limits: HashMap<Item, f64>,
+    pub outputs: IndexMap<Item, f64>,
+    pub recipes: Vec<Recipe>,
 }
 
-impl<'a> PlanConfig<'a> {
-    pub fn from_file(
-        file_path: &str,
-        all_recipes: &'a [Recipe],
-    ) -> Result<PlanConfig<'a>, PlanError> {
+impl PlanConfig {
+    pub fn from_file(file_path: &str, all_recipes: &[Recipe]) -> Result<PlanConfig, PlanError> {
         let file = File::open(file_path)?;
         let config: PlanConfigDefinition = serde_yaml::from_reader(file)?;
 
-        let mut input_limits: HashMap<Item, f64> = DEFAULT_LIMITS.iter().copied().collect();
+        let mut inputs: HashMap<Item, f64> = DEFAULT_LIMITS.iter().copied().collect();
+        inputs.extend(config.inputs);
 
-        for (item, value) in config.override_limits {
-            if !item.is_extractable() {
-                return Err(PlanError::InvalidOverrideLimit(item));
+        // validate there are no extractable resources in the outputs list
+        for item in config.outputs.keys() {
+            if item.is_extractable() {
+                return Err(PlanError::UnexpectedRawOutputItem(*item));
+            }
+        }
+
+        let mut recipes: Vec<Recipe> = Vec::new();
+        let mut recipe_exclusions: Vec<Recipe> = Vec::new();
+        for matcher in &config.enabled_recipes {
+            let matching_recipes = matcher.all_matching(all_recipes)?;
+            if matcher.is_include() {
+                recipes.extend(matching_recipes);
             } else {
-                input_limits.insert(item, value);
+                recipe_exclusions.extend(matching_recipes);
             }
         }
 
-        // validate there are no raw resource in the inputs list
-        for input in &config.inputs {
-            if input.item.is_extractable() {
-                return Err(PlanError::UnexpectedRawInputItem(input.item));
-            }
-        }
-
-        // validate there are no raw resource in the outputs list
-        for output in &config.outputs {
-            if output.item.is_extractable() {
-                return Err(PlanError::UnexpectedRawOutputItem(output.item));
-            }
-        }
-
-        let recipes_by_name: HashMap<String, &'a Recipe> =
-            all_recipes.iter().map(|r| (r.name.clone(), r)).collect();
-
-        // lookup the enabled recipes from the list of all recipes
-        let mut recipes: Vec<&Recipe> = Vec::new();
-        for recipe_name in &config.enabled_recipes {
-            if recipe_name.eq_ignore_ascii_case("All Base") {
-                recipes.extend(all_recipes.iter().filter(|r| !r.alternate));
-            } else if recipe_name.eq_ignore_ascii_case("All Alternate") {
-                recipes.extend(all_recipes.iter().filter(|r| r.alternate));
-            } else {
-                let recipe = recipes_by_name
-                    .get(recipe_name)
-                    .copied()
-                    .ok_or(PlanError::InvalidRecipe(recipe_name.clone()))?;
-                if !recipes.contains(&recipe) {
-                    recipes.push(recipe);
-                }
-            }
-        }
-
-        recipes.sort_by_key(|r| &r.name);
+        recipes.retain(|recipe| !recipe_exclusions.contains(recipe));
+        recipes.sort_by(|a, b| a.name.cmp(&b.name));
         recipes.dedup();
 
         Ok(PlanConfig {
-            inputs: config
-                .inputs
-                .iter()
-                .copied()
-                .map(|iv| (iv.item, iv.value))
-                .collect(),
+            inputs,
             outputs: config.outputs,
             recipes,
-            input_limits,
         })
+    }
+
+    pub fn find_recipe_by_output(&self, output: Item) -> impl Iterator<Item = &Recipe> {
+        self.recipes
+            .iter()
+            .filter(move |recipe| recipe.has_output_item(output))
+    }
+
+    pub fn find_recipe_by_input(&self, input: Item) -> impl Iterator<Item = &Recipe> {
+        self.recipes
+            .iter()
+            .filter(move |recipe| recipe.has_input_item(input))
+    }
+
+    pub fn has_input(&self, item: Item) -> bool {
+        self.find_input(item) > 0.0
+    }
+
+    pub fn find_input(&self, item: Item) -> f64 {
+        self.inputs.get(&item).copied().unwrap_or(0.0)
     }
 }

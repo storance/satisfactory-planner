@@ -1,4 +1,5 @@
 extern crate anyhow;
+extern crate indexmap;
 extern crate petgraph;
 extern crate serde;
 extern crate serde_yaml;

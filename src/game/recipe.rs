@@ -30,7 +30,7 @@ pub struct RecipeIO {
     pub amount_per_minute: f64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Recipe {
     pub name: String,
     pub alternate: bool,
@@ -160,6 +160,14 @@ impl Recipe {
 
     pub fn find_output_by_item(&self, item: Item) -> Option<&RecipeIO> {
         self.outputs.iter().find(|output| output.item == item)
+    }
+
+    pub fn has_output_item(&self, item: Item) -> bool {
+        self.outputs.iter().any(|output| output.item == item)
+    }
+
+    pub fn has_input_item(&self, item: Item) -> bool {
+        self.inputs.iter().any(|input| input.item == item)
     }
 }
 
