@@ -714,6 +714,8 @@ recipes:
       - Compacted Coal: 5
     craft_time: 12
     machine: Assembler
+  # Turbofuel
+
   # Black Powder
   - name: Black Powder
     inputs:
@@ -743,6 +745,45 @@ recipes:
     machine: Refinery
 
   #
+  # Equipment
+  # 
+
+  # Portable Miner
+  - name: Automated Miner
+    alternate: true
+    inputs:
+      - Motor: 1
+      - Stator: 4
+      - Iron Rod: 4
+      - Iron Plate: 2
+    outputs:
+      - Portable Miner: 1
+    craft_time: 60
+    machine: Manufacturer
+  # Beacon
+  - name: Beacon
+    alternate: false
+    inputs:
+      - Iron Plate: 3
+      - Iron Rod: 1
+      - Wire: 15
+      - Cable: 2
+    outputs:
+      - Beacon: 4
+    craft_time: 8
+    machine: Manufacturer
+  - name: Crystal Beacon
+    alternate: true
+    inputs:
+      - Steel Beam: 4
+      - Steel Pipe: 16
+      - Crystal Oscillator: 1
+    outputs:
+      - Beacon: 20
+    craft_time: 120
+    machine: Manufacturer
+
+  #
   # Space Elevator Parts
   #
 
@@ -765,4 +806,44 @@ recipes:
     outputs:
       - Smart Plating: 2
     craft_time: 24
+    machine: Manufacturer
+  # Versatile Framework
+  - name: Versatile Framework
+    alternate: false
+    inputs:
+      - Modular Frame: 1
+      - Steel Beam: 12
+    outputs:
+      - Versatile Framework: 2
+    craft_time: 24
+    machine: Assembler
+  - name: Flexible Framework
+    alternate: true
+    inputs:
+      - Modular Frame: 1
+      - Steel Beam: 6
+      - Rubber: 8
+    outputs:
+      - Versatile Framework: 2
+    craft_time: 16
+    machine: Manufacturer
+  # Automated Wiring
+  - name: Automated Wiring
+    alternate: false
+    inputs:
+      - Stator: 1
+      - Cable: 20
+    outputs:
+      - Automated Wiring: 1
+    craft_time: 24
+    machine: Assembler
+  - name: Automated Speed Wiring
+    alternate: true
+    inputs:
+      - Stator: 2
+      - Wire: 40
+      - High-Speed Connector: 1
+    outputs:
+      - Automated Wiring: 4
+    craft_time: 32
     machine: Manufacturer
