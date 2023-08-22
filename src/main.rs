@@ -31,7 +31,7 @@ fn main() {
         &|_, _| String::new(),
         &|_, n| {
             let color = match n.1 {
-                plan::NodeValue::Input(..) => "lightslategray",
+                plan::NodeValue::Input(input) => if input.item.is_extractable() { "lightslategray"} else { "peru" },
                 plan::NodeValue::Output(..) => "mediumseagreen",
                 plan::NodeValue::ByProduct(..) => "cornflowerblue",
                 plan::NodeValue::Production(..) => "darkorange"
