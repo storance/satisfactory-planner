@@ -21,13 +21,19 @@ pub enum NodeValue<'a> {
     Production(Production<'a>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
+pub struct NodeEdge {
+    pub value: ItemValuePair,
+    pub order: u32,
+}
+
+#[derive(Debug, Copy, Clone)]
 pub struct ScoredNodeValue<'a> {
     pub node: NodeValue<'a>,
     pub score: f64,
 }
 
-pub type GraphType<'a> = StableDiGraph<NodeValue<'a>, ItemValuePair>;
+pub type GraphType<'a> = StableDiGraph<NodeValue<'a>, NodeEdge>;
 pub type ScoredGraphType<'a> = StableDiGraph<ScoredNodeValue<'a>, ItemValuePair>;
 
 impl<'a> NodeValue<'a> {
@@ -69,6 +75,13 @@ impl<'a> NodeValue<'a> {
         matches!(self, NodeValue::Production(..))
     }
 
+    pub fn as_input(&self) -> &ItemValuePair {
+        match self {
+            NodeValue::Input(input) => input,
+            _ => panic!("NodeValue is not an Input"),
+        }
+    }
+
     pub fn as_input_mut(&mut self) -> &mut ItemValuePair {
         match self {
             NodeValue::Input(input) => input,
@@ -105,7 +118,7 @@ impl<'a> fmt::Display for NodeValue<'a> {
             NodeValue::Input(item_value) => {
                 write!(
                     f,
-                    "{} {} / min",
+                    "{}\n{} / min",
                     item_value.item,
                     round_f64(item_value.value, 3)
                 )
@@ -113,7 +126,7 @@ impl<'a> fmt::Display for NodeValue<'a> {
             NodeValue::Production(production) => {
                 write!(
                     f,
-                    "{} {}x {}",
+                    "{}\n{}x {}",
                     production.recipe.name,
                     round_f64(production.machine_count, 3),
                     production.recipe.machine
@@ -122,7 +135,7 @@ impl<'a> fmt::Display for NodeValue<'a> {
             NodeValue::ByProduct(item_value, ..) => {
                 write!(
                     f,
-                    "{} {} / min",
+                    "{}\n{} / min",
                     item_value.item,
                     round_f64(item_value.value, 3)
                 )
@@ -130,7 +143,7 @@ impl<'a> fmt::Display for NodeValue<'a> {
             NodeValue::Output(item_value, ..) => {
                 write!(
                     f,
-                    "{} {} / min",
+                    "{}\n{} / min",
                     item_value.item,
                     round_f64(item_value.value, 3)
                 )
@@ -191,6 +204,23 @@ impl<'a> From<NodeValue<'a>> for ScoredNodeValue<'a> {
             node,
             score: f64::INFINITY,
         }
+    }
+}
+
+impl NodeEdge {
+    pub fn new(value: ItemValuePair, order: u32) -> Self {
+        Self { value, order }
+    }
+}
+
+impl fmt::Display for NodeEdge {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}\n{} / min",
+            self.value.item,
+            round_f64(self.value.value, 3)
+        )
     }
 }
 
