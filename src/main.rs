@@ -26,7 +26,19 @@ fn main() {
         panic!("Failed to solve plan: {}", e);
     });
 
-    println!("{}", Dot::new(&graph));
+    println!("{}", format!("{}", Dot::with_attr_getters(&graph,
+        &[],
+        &|_, _| String::new(),
+        &|_, n| {
+            let color = match n.1 {
+                plan::NodeValue::Input(..) => "lightslategray",
+                plan::NodeValue::Output(..) => "mediumseagreen",
+                plan::NodeValue::ByProduct(..) => "cornflowerblue",
+                plan::NodeValue::Production(..) => "darkorange"
+            };
+
+            format!("style=\"solid,filled\" shape=\"box\" fontcolor=\"white\" color=\"{}\"", color)
+        })).replace("\\l", "\\n"));
 }
 
 pub fn print_item(item: Item) {
