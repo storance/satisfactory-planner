@@ -65,7 +65,7 @@ pub fn solve<'a>(config: &'a PlanConfig) -> SolverResult<GraphType<'a>> {
 
     let mut solved_graph: GraphType<'a> = GraphType::new();
     let mut remaining_inputs = config.inputs.clone();
-    for mut output_graph in output_graphs {
+    for output_graph in output_graphs {
         merge_optimal_path(
             &output_graph.graph,
             output_graph.root_index,
