@@ -2,6 +2,7 @@ use crate::game::{Item, ItemValuePair, Recipe};
 use crate::plan::{find_production_node, ItemBitSet, NodeValue, PlanConfig};
 
 use petgraph::graph::NodeIndex;
+use petgraph::stable_graph::EdgeIndex;
 use petgraph::visit::EdgeRef;
 use petgraph::Incoming;
 use std::cmp::Ordering;
@@ -10,20 +11,42 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 use super::{
-    find_by_product_node, find_input_node, find_output_node, GraphType, Production,
-    ScoredGraphType, ScoredNodeValue,
+    find_input_node, find_output_node, GraphType, NodeEdge, Production, ScoredGraphType,
+    ScoredNodeValue,
 };
 
 #[derive(Error, Debug)]
-#[allow(dead_code)]
-pub enum SolverError {
-    #[error("There is not enough {0} to produce the desired outputs")]
-    InsufficientInput(Item),
-    #[error("There was no recipe found that can produce {0} and it was not supplied as an input.")]
-    UncraftableItem(Item),
+#[error("Unsolvable Plan: Unable to craft the desired quantity of `{item}`")]
+pub struct SolverError {
+    item: Item,
+}
+
+struct SingleOutputGraph<'a> {
+    output: ItemValuePair,
+    graph: ScoredGraphType<'a>,
+    root_index: NodeIndex,
+    overall_score: f64,
+    unique_inputs: usize,
 }
 
 pub type SolverResult<T> = Result<T, SolverError>;
+
+impl<'a> SingleOutputGraph<'a> {
+    pub fn new(config: &'a PlanConfig, output: ItemValuePair) -> Self {
+        let (mut graph, root_index) = build_single_output_graph(config, output);
+
+        let overall_score = score_node(config, &mut graph, root_index);
+        let unique_inputs = count_unique_inputs(&graph, root_index);
+
+        Self {
+            output,
+            graph,
+            root_index,
+            overall_score,
+            unique_inputs,
+        }
+    }
+}
 
 pub fn solve<'a>(config: &'a PlanConfig) -> SolverResult<GraphType<'a>> {
     let mut output_graphs: Vec<SingleOutputGraph<'a>> = config
@@ -41,11 +64,14 @@ pub fn solve<'a>(config: &'a PlanConfig) -> SolverResult<GraphType<'a>> {
     });
 
     let mut solved_graph: GraphType<'a> = GraphType::new();
+    let mut remaining_inputs = config.inputs.clone();
     for output_graph in output_graphs {
         merge_optimal_path(
             &output_graph.graph,
             output_graph.root_index,
+            output_graph.output,
             &mut solved_graph,
+            &mut remaining_inputs,
         )?;
     }
 
@@ -55,108 +81,350 @@ pub fn solve<'a>(config: &'a PlanConfig) -> SolverResult<GraphType<'a>> {
 fn merge_optimal_path<'a>(
     src_graph: &ScoredGraphType<'a>,
     node_index: NodeIndex,
+    desired_output: ItemValuePair,
     dest_graph: &mut GraphType<'a>,
-) -> SolverResult<NodeIndex> {
-    let children_by_items: HashMap<Item, Vec<NodeIndex>> =
-        group_children_by_input(node_index, src_graph);
+    remaining_inputs: &mut HashMap<Item, f64>,
+) -> SolverResult<(NodeIndex, ItemValuePair)> {
+    match src_graph[node_index].node {
+        NodeValue::Input(input) => {
+            assert!(desired_output.item == input.item);
+            merge_input_node(desired_output, dest_graph, remaining_inputs)
+        }
+        NodeValue::Output(output) => {
+            assert!(desired_output.item == output.item);
+            merge_output_node(
+                src_graph,
+                node_index,
+                desired_output,
+                dest_graph,
+                remaining_inputs,
+            )
+        }
+        NodeValue::Production(production) => merge_production_node(
+            src_graph,
+            node_index,
+            production,
+            desired_output,
+            dest_graph,
+            remaining_inputs,
+        ),
+        NodeValue::ByProduct(..) => todo!(),
+    }
+}
 
-    let dest_node_index = match src_graph[node_index].node {
-        NodeValue::Input(input) => merge_input_node(input, dest_graph),
-        NodeValue::Output(output) => merge_output_node(output, dest_graph),
-        NodeValue::ByProduct(output) => merge_by_product_node(output, dest_graph),
-        NodeValue::Production(production) => merge_production_node(production, dest_graph),
+fn merge_input_node(
+    input: ItemValuePair,
+    dest_graph: &mut GraphType,
+    remaining_inputs: &mut HashMap<Item, f64>,
+) -> SolverResult<(NodeIndex, ItemValuePair)> {
+    let limit = remaining_inputs.get(&input.item).copied().unwrap_or(0.0);
+    let available_input = ItemValuePair::new(input.item, input.value.min(limit).max(0.0));
+    let leftover_input =
+        ItemValuePair::new(input.item, 0.0f64.max(input.value - available_input.value));
+
+    if available_input.value <= 0.0 {
+        return Err(SolverError { item: input.item });
+    }
+
+    let node_index = if let Some(existing_index) = find_input_node(dest_graph, available_input.item)
+    {
+        dest_graph[existing_index].as_input_mut().value += available_input.value;
+        existing_index
+    } else {
+        dest_graph.add_node(NodeValue::Input(available_input))
     };
 
-    for (item, children) in children_by_items {
-        if children.is_empty() {
-            return Err(SolverError::UncraftableItem(item));
+    *remaining_inputs.entry(available_input.item).or_default() -= available_input.value;
+    Ok((node_index, leftover_input))
+}
+
+fn merge_output_node<'a>(
+    src_graph: &ScoredGraphType<'a>,
+    node_index: NodeIndex,
+    desired_output: ItemValuePair,
+    dest_graph: &mut GraphType<'a>,
+    remaining_inputs: &mut HashMap<Item, f64>,
+) -> SolverResult<(NodeIndex, ItemValuePair)> {
+    let mut children: Vec<NodeIndex> = src_graph.neighbors_directed(node_index, Incoming).collect();
+    children.sort_by(|a, b| src_graph[*a].score.total_cmp(&src_graph[*b].score));
+
+    let mut remaining_output = desired_output;
+    let mut new_children: Vec<(NodeIndex, ItemValuePair)> = Vec::new();
+    for child_index in children {
+        if remaining_output.value <= 0.0 {
+            break;
         }
 
-        let best_child_index = children
-            .iter()
-            .copied()
-            .min_by(|a, b| src_graph[*a].score.total_cmp(&src_graph[*b].score))
-            .unwrap();
+        if let Ok((child_index, leftover_output)) = merge_optimal_path(
+            src_graph,
+            child_index,
+            remaining_output,
+            dest_graph,
+            remaining_inputs,
+        ) {
+            new_children.push((child_index, remaining_output - leftover_output.value));
+            remaining_output = leftover_output;
+        }
+    }
 
-        let new_child_index = merge_optimal_path(src_graph, best_child_index, dest_graph)?;
-        let edge_index = src_graph.find_edge(best_child_index, node_index).unwrap();
-        let input_value: ItemValuePair = src_graph[edge_index];
+    if remaining_output.value > 0.0 {
+        return Err(SolverError {
+            item: desired_output.item,
+        });
+    }
 
-        if let Some(existing_edge) = dest_graph.find_edge(new_child_index, dest_node_index) {
-            dest_graph[existing_edge].value += input_value.value;
+    let new_node_index =
+        if let Some(existing_index) = find_output_node(dest_graph, desired_output.item) {
+            dest_graph[existing_index].as_output_mut().value += desired_output.value;
+            existing_index
         } else {
-            dest_graph.add_edge(new_child_index, dest_node_index, input_value);
-        }
+            dest_graph.add_node(NodeValue::new_output(desired_output))
+        };
+
+    for (order, (child_index, item_value)) in new_children.iter().enumerate() {
+        create_or_update_edge(
+            *child_index,
+            new_node_index,
+            *item_value,
+            order as u32,
+            dest_graph,
+        );
     }
 
-    Ok(dest_node_index)
-}
-
-fn merge_input_node(input: ItemValuePair, dest_graph: &mut GraphType) -> NodeIndex {
-    if let Some(existing_index) = find_input_node(dest_graph, input.item) {
-        dest_graph[existing_index].as_input_mut().value += input.value;
-        existing_index
-    } else {
-        dest_graph.add_node(NodeValue::Input(input))
-    }
-}
-
-fn merge_output_node(output: ItemValuePair, dest_graph: &mut GraphType) -> NodeIndex {
-    if let Some(existing_index) = find_by_product_node(dest_graph, output.item) {
-        dest_graph[existing_index].as_output_mut().value += output.value;
-        existing_index
-    } else {
-        dest_graph.add_node(NodeValue::new_by_product(output))
-    }
-}
-
-fn merge_by_product_node(output: ItemValuePair, dest_graph: &mut GraphType) -> NodeIndex {
-    if let Some(existing_index) = find_output_node(dest_graph, output.item) {
-        dest_graph[existing_index].as_output_mut().value += output.value;
-        existing_index
-    } else {
-        dest_graph.add_node(NodeValue::new_output(output))
-    }
+    Ok((new_node_index, remaining_output))
 }
 
 fn merge_production_node<'a>(
+    src_graph: &ScoredGraphType<'a>,
+    node_index: NodeIndex,
     production: Production<'a>,
+    desired_output: ItemValuePair,
     dest_graph: &mut GraphType<'a>,
-) -> NodeIndex {
-    if let Some(existing_index) = find_production_node(dest_graph, production.recipe) {
-        dest_graph[existing_index].as_production_mut().machine_count += production.machine_count;
+    remaining_inputs: &mut HashMap<Item, f64>,
+) -> SolverResult<(NodeIndex, ItemValuePair)> {
+    let chosen_output = production
+        .recipe
+        .find_output_by_item(desired_output.item)
+        .unwrap();
 
-        existing_index
-    } else {
-        dest_graph.add_node(NodeValue::Production(production))
+    let mut children_by_items: HashMap<Item, Vec<NodeIndex>> = production
+        .recipe
+        .inputs
+        .iter()
+        .copied()
+        .map(|input| (input.item, Vec::<NodeIndex>::new()))
+        .collect();
+
+    for edge in src_graph.edges_directed(node_index, Incoming) {
+        children_by_items
+            .entry(edge.weight().item)
+            .or_default()
+            .push(edge.source());
     }
-}
 
-#[allow(dead_code)]
-struct SingleOutputGraph<'a> {
-    output: ItemValuePair,
-    graph: ScoredGraphType<'a>,
-    root_index: NodeIndex,
-    overall_score: f64,
-    unique_inputs: usize,
-}
+    let new_machine_count = desired_output.value / chosen_output.amount_per_minute;
+    let mut min_machine_count = new_machine_count;
+    let mut new_children_by_items: HashMap<Item, Vec<(NodeIndex, ItemValuePair)>> = HashMap::new();
+    for (item, mut children) in children_by_items {
+        let recipe_input = production.recipe.find_input_by_item(item).unwrap();
+        let initial_output = recipe_input.to_amount_per_minute_pair() * new_machine_count;
+        let mut remaining_output = initial_output;
 
-impl<'a> SingleOutputGraph<'a> {
-    pub fn new(config: &'a PlanConfig, output: ItemValuePair) -> Self {
-        let (mut graph, root_index) = build_single_output_graph(config, output);
+        children.sort_by(|a, b| src_graph[*a].score.total_cmp(&src_graph[*b].score));
+        for child_index in children {
+            if remaining_output.value <= 0.0 {
+                break;
+            }
 
-        prune_impossible(root_index, &mut graph);
-        let overall_score = score_node(config, &mut graph, root_index);
-        let unique_inputs = count_unique_inputs(&graph, root_index);
+            let merge_result = merge_optimal_path(
+                src_graph,
+                child_index,
+                remaining_output,
+                dest_graph,
+                remaining_inputs,
+            );
+            if let Ok((child_index, leftover_output)) = merge_result {
+                new_children_by_items
+                    .entry(item)
+                    .or_default()
+                    .push((child_index, remaining_output - leftover_output.value));
+                remaining_output = leftover_output;
+            }
+        }
 
-        Self {
-            output,
-            graph,
-            root_index,
-            overall_score,
-            unique_inputs,
+        let used_output = initial_output - remaining_output.value;
+        min_machine_count =
+            min_machine_count.min(used_output.value / recipe_input.amount_per_minute);
+    }
+
+    let new_node_index = match find_production_node(dest_graph, production.recipe) {
+        Some(existing_index) => {
+            dest_graph[existing_index].as_production_mut().machine_count += new_machine_count;
+            existing_index
+        }
+        None => dest_graph.add_node(NodeValue::new_production(
+            production.recipe,
+            new_machine_count,
+        )),
+    };
+
+    for children in new_children_by_items.values() {
+        for (order, (child_index, item_value)) in children.iter().enumerate() {
+            create_or_update_edge(
+                *child_index,
+                new_node_index,
+                *item_value,
+                order as u32,
+                dest_graph,
+            );
         }
     }
+
+    let machine_count_diff = f64::max(0.0, new_machine_count - min_machine_count);
+    let reduced_output = chosen_output.to_amount_per_minute_pair() * machine_count_diff;
+    reduce_node_output(new_node_index, reduced_output, dest_graph, remaining_inputs);
+
+    Ok((
+        new_node_index,
+        desired_output - (chosen_output.amount_per_minute * min_machine_count),
+    ))
+}
+
+fn create_input_node(
+    item_value: ItemValuePair,
+    parent_index: NodeIndex,
+    graph: &mut ScoredGraphType,
+) -> NodeIndex {
+    let child_node = ScoredNodeValue::new_input(item_value);
+    let child_index = graph.add_node(child_node);
+    graph.add_edge(child_index, parent_index, item_value);
+
+    child_index
+}
+
+fn create_production_nodes<'a>(
+    config: &'a PlanConfig,
+    item_value: ItemValuePair,
+    parent_index: NodeIndex,
+    graph: &mut ScoredGraphType<'a>,
+) -> Vec<NodeIndex> {
+    config
+        .find_recipe_by_output(item_value.item)
+        .map(|recipe| {
+            let output = recipe.find_output_by_item(item_value.item).unwrap();
+            let machine_count = item_value.value / output.amount_per_minute;
+
+            let child_node = ScoredNodeValue::new_production(recipe, machine_count);
+            let child_index = graph.add_node(child_node);
+            graph.add_edge(child_index, parent_index, item_value);
+
+            child_index
+        })
+        .collect()
+}
+
+fn create_or_update_edge(
+    child_index: NodeIndex,
+    parent_index: NodeIndex,
+    item_value: ItemValuePair,
+    order: u32,
+    graph: &mut GraphType,
+) {
+    if let Some(edge_index) = graph.find_edge(child_index, parent_index) {
+        assert!(graph[edge_index].value.item == item_value.item);
+        graph[edge_index].value += item_value.value;
+    } else {
+        graph.add_edge(child_index, parent_index, NodeEdge::new(item_value, order));
+    }
+}
+
+fn reduce_node_output(
+    node_index: NodeIndex,
+    reduce_amount: ItemValuePair,
+    graph: &mut GraphType<'_>,
+    remaining_inputs: &mut HashMap<Item, f64>,
+) -> bool {
+    if reduce_amount.value <= 0.0 {
+        return false;
+    }
+
+    match graph[node_index] {
+        NodeValue::Input(input) => {
+            assert!(input.item == reduce_amount.item);
+            let new_value = f64::max(0.0, input.value - reduce_amount.value);
+
+            if new_value <= 0.0 {
+                prune_node(node_index, graph, remaining_inputs);
+                return true;
+            }
+            *remaining_inputs.entry(input.item).or_default() +=
+                f64::min(reduce_amount.value, input.value);
+            graph[node_index].as_input_mut().value = new_value;
+        }
+        NodeValue::Production(production) => {
+            let output = production
+                .recipe
+                .find_output_by_item(reduce_amount.item)
+                .unwrap();
+            let reduced_machine_count = reduce_amount.value / output.amount_per_minute;
+            graph[node_index].as_production_mut().machine_count -= reduced_machine_count;
+
+            if production.machine_count <= 0.0 {
+                prune_node(node_index, graph, remaining_inputs);
+                return true;
+            }
+
+            let mut children_by_inputs: HashMap<Item, Vec<(EdgeIndex, NodeIndex)>> = HashMap::new();
+            for edge in graph.edges_directed(node_index, Incoming) {
+                children_by_inputs
+                    .entry(edge.weight().value.item)
+                    .or_default()
+                    .push((edge.id(), edge.source()));
+            }
+
+            for (item, mut children) in children_by_inputs {
+                let recipe_input = production.recipe.find_input_by_item(item).unwrap();
+                let total_output = children
+                    .iter()
+                    .map(|e| graph[e.0].value.value)
+                    .reduce(|acc, e| acc + e)
+                    .unwrap_or(0.0);
+
+                let desired_output = recipe_input.amount_per_minute * production.machine_count;
+                let mut to_prune = total_output - desired_output;
+                children.sort_by(|a, b| graph[a.0].order.cmp(&graph[b.0].order).reverse());
+                for (edge_index, child_index) in children {
+                    let reduce_amount = graph[edge_index].value - to_prune;
+                    to_prune = f64::max(0.0, to_prune - reduce_amount.value);
+                    reduce_node_output(child_index, reduce_amount, graph, remaining_inputs);
+                }
+            }
+        }
+        _ => {
+            panic!("Unexpected node found");
+        }
+    };
+
+    false
+}
+
+fn prune_node(
+    node_index: NodeIndex,
+    graph: &mut GraphType,
+    remaining_inputs: &mut HashMap<Item, f64>,
+) {
+    let mut neighbor_walker = graph.neighbors_directed(node_index, Incoming).detach();
+
+    while let Some(child_index) = neighbor_walker.next_node(graph) {
+        prune_node(child_index, graph, remaining_inputs);
+    }
+
+    if graph[node_index].is_input() {
+        let input = graph[node_index].as_input();
+        *remaining_inputs.entry(input.item).or_default() += input.value;
+    }
+
+    graph.remove_node(node_index);
 }
 
 fn build_single_output_graph(
@@ -212,108 +480,6 @@ fn build_single_output_graph_level<'a>(
     }
 
     next_nodes
-}
-
-fn create_input_node(
-    item_value: ItemValuePair,
-    parent_index: NodeIndex,
-    graph: &mut ScoredGraphType,
-) -> NodeIndex {
-    let child_node = ScoredNodeValue::new_input(item_value);
-    let child_index = graph.add_node(child_node);
-    graph.add_edge(child_index, parent_index, item_value);
-
-    child_index
-}
-
-fn create_production_nodes<'a>(
-    config: &'a PlanConfig,
-    item_value: ItemValuePair,
-    parent_index: NodeIndex,
-    graph: &mut ScoredGraphType<'a>,
-) -> Vec<NodeIndex> {
-    config
-        .find_recipe_by_output(item_value.item)
-        .map(|recipe| {
-            let output = recipe.find_output_by_item(item_value.item).unwrap();
-            let machine_count = item_value.value / output.amount_per_minute;
-
-            let child_node = ScoredNodeValue::new_production(recipe, machine_count);
-            let child_index = graph.add_node(child_node);
-            graph.add_edge(child_index, parent_index, item_value);
-
-            child_index
-        })
-        .collect()
-}
-
-fn prune_impossible(node_index: NodeIndex, graph: &mut ScoredGraphType) -> bool {
-    if graph[node_index].is_input() {
-        return false;
-    }
-
-    let children_by_input = group_children_by_input(node_index, graph);
-    let mut delete_self = false;
-
-    for children in children_by_input.values() {
-        let remaining_children: Vec<NodeIndex> = children
-            .iter()
-            .copied()
-            .filter(|child_index| !prune_impossible(*child_index, graph))
-            .collect();
-
-        if remaining_children.is_empty() {
-            delete_self = true;
-            break;
-        }
-    }
-
-    if delete_self {
-        prune_node(node_index, graph);
-    }
-    delete_self
-}
-
-fn prune_node(node_index: NodeIndex, graph: &mut ScoredGraphType) {
-    let mut neighbor_walker = graph.neighbors_directed(node_index, Incoming).detach();
-
-    while let Some(child_index) = neighbor_walker.next_node(graph) {
-        prune_node(child_index, graph);
-    }
-
-    graph.remove_node(node_index);
-}
-
-fn group_children_by_input(
-    node_index: NodeIndex,
-    graph: &ScoredGraphType,
-) -> HashMap<Item, Vec<NodeIndex>> {
-    let expected_items = match graph[node_index].node {
-        NodeValue::Input(..) => Vec::new(),
-        NodeValue::Output(output) => vec![output.item],
-        NodeValue::ByProduct(output) => vec![output.item],
-        NodeValue::Production(production) => production
-            .recipe
-            .inputs
-            .iter()
-            .map(|input| input.item)
-            .collect(),
-    };
-
-    let mut children_by_items: HashMap<Item, Vec<NodeIndex>> = expected_items
-        .iter()
-        .copied()
-        .map(|item| (item, Vec::<NodeIndex>::new()))
-        .collect();
-
-    for edge in graph.edges_directed(node_index, Incoming) {
-        children_by_items
-            .entry(edge.weight().item)
-            .or_default()
-            .push(edge.source());
-    }
-
-    children_by_items
 }
 
 fn score_node(config: &PlanConfig, graph: &mut ScoredGraphType, node_index: NodeIndex) -> f64 {

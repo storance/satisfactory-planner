@@ -3,7 +3,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::fmt::Debug;
-use std::ops::{Add, Mul};
+use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Sub, SubAssign};
 
 use crate::game::Item;
 
@@ -14,8 +14,11 @@ pub struct ItemValuePair {
 }
 
 impl ItemValuePair {
-    pub const fn new(item: Item, value: f64) -> Self {
-        Self { item, value }
+    pub fn new(item: Item, value: f64) -> Self {
+        Self {
+            item,
+            value: f64::max(0.0, value),
+        }
     }
 }
 
@@ -30,6 +33,29 @@ impl Add<f64> for ItemValuePair {
     }
 }
 
+impl AddAssign<f64> for ItemValuePair {
+    fn add_assign(&mut self, rhs: f64) {
+        self.value += rhs
+    }
+}
+
+impl Sub<f64> for ItemValuePair {
+    type Output = Self;
+
+    fn sub(self, rhs: f64) -> Self::Output {
+        Self {
+            item: self.item,
+            value: self.value - rhs,
+        }
+    }
+}
+
+impl SubAssign<f64> for ItemValuePair {
+    fn sub_assign(&mut self, rhs: f64) {
+        self.value = f64::max(0.0, self.value - rhs);
+    }
+}
+
 impl Mul<f64> for ItemValuePair {
     type Output = Self;
 
@@ -38,6 +64,23 @@ impl Mul<f64> for ItemValuePair {
             item: self.item,
             value: self.value * rhs,
         }
+    }
+}
+
+impl Div<f64> for ItemValuePair {
+    type Output = Self;
+
+    fn div(self, rhs: f64) -> Self::Output {
+        Self {
+            item: self.item,
+            value: self.value / rhs,
+        }
+    }
+}
+
+impl MulAssign<f64> for ItemValuePair {
+    fn mul_assign(&mut self, rhs: f64) {
+        self.value *= rhs;
     }
 }
 
