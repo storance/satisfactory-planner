@@ -10,6 +10,8 @@ struct RecipeDefinition {
     pub name: String,
     #[serde(default)]
     pub alternate: bool,
+    #[serde(default)]
+    pub ficsmas: bool,
     pub outputs: Vec<ItemValuePair>,
     pub inputs: Vec<ItemValuePair>,
     pub craft_time: u32,
@@ -34,6 +36,7 @@ pub struct RecipeIO {
 pub struct Recipe {
     pub name: String,
     pub alternate: bool,
+    pub ficsmas: bool,
     pub outputs: Vec<RecipeIO>,
     pub inputs: Vec<RecipeIO>,
     pub craft_time: u32,
@@ -190,6 +193,7 @@ impl From<RecipeDefinition> for Recipe {
         Self {
             name: recipe.name,
             alternate: recipe.alternate,
+            ficsmas: recipe.ficsmas,
             outputs,
             inputs,
             craft_time: recipe.craft_time,
@@ -263,6 +267,7 @@ mod tests {
         let recipe_def = RecipeDefinition {
             name: String::from("Iron Ingot"),
             alternate: false,
+            ficsmas: false,
             inputs: vec![ItemValuePair::new(Item::IronOre, 1.0)],
             outputs: vec![ItemValuePair::new(Item::IronIngot, 1.0)],
             craft_time: 4,
@@ -277,6 +282,7 @@ mod tests {
         let expected_recipe = Recipe {
             name: String::from("Iron Ingot"),
             alternate: false,
+            ficsmas: false,
             inputs: vec![RecipeIO::new(Item::IronOre, 1.0, 15.0)],
             outputs: vec![RecipeIO::new(Item::IronIngot, 1.0, 15.0)],
             craft_time: 4,
@@ -292,6 +298,7 @@ mod tests {
         let recipe_def = RecipeDefinition {
             name: String::from("Beacon"),
             alternate: false,
+            ficsmas: false,
             inputs: vec![
                 ItemValuePair::new(Item::IronPlate, 3.0),
                 ItemValuePair::new(Item::IronRod, 1.0),
@@ -322,6 +329,7 @@ mod tests {
         let recipe_def = RecipeDefinition {
             name: String::from("Encased Uranium Cell"),
             alternate: false,
+            ficsmas: false,
             inputs: vec![
                 ItemValuePair::new(Item::Uranium, 10.0),
                 ItemValuePair::new(Item::Concrete, 3.0),
@@ -354,6 +362,7 @@ mod tests {
         let recipe_def = RecipeDefinition {
             name: String::from("Iron Ingot"),
             alternate: false,
+            ficsmas: false,
             inputs: vec![],
             outputs: vec![ItemValuePair::new(Item::IronIngot, 1.0)],
             craft_time: 4,
@@ -373,6 +382,7 @@ mod tests {
         let recipe_def = RecipeDefinition {
             name: String::from("Iron Ingot"),
             alternate: false,
+            ficsmas: false,
             inputs: vec![ItemValuePair::new(Item::IronIngot, 1.0)],
             outputs: vec![],
             craft_time: 4,
@@ -395,6 +405,7 @@ mod tests {
         let recipe_def = RecipeDefinition {
             name: String::from("Encased Uranium Cell"),
             alternate: false,
+            ficsmas: false,
             inputs: vec![
                 ItemValuePair::new(Item::Uranium, 10.0),
                 ItemValuePair::new(Item::Concrete, 3.0),
@@ -425,6 +436,7 @@ mod tests {
         let recipe_def = RecipeDefinition {
             name: String::from("Encased Uranium Cell"),
             alternate: false,
+            ficsmas: false,
             inputs: vec![
                 ItemValuePair::new(Item::Uranium, 10.0),
                 ItemValuePair::new(Item::Concrete, 3.0),
@@ -458,6 +470,7 @@ mod tests {
         let recipe = Recipe {
             name: String::from("Iron Ingot"),
             alternate: false,
+            ficsmas: false,
             inputs: vec![RecipeIO::new(Item::IronOre, 1.0, 15.0)],
             outputs: vec![RecipeIO::new(Item::IronIngot, 1.0, 15.0)],
             craft_time: 4,
@@ -473,6 +486,7 @@ mod tests {
         let recipe = Recipe {
             name: String::from("Nuclear Pasta"),
             alternate: false,
+            ficsmas: false,
             inputs: vec![
                 RecipeIO::new(Item::CopperPowder, 200.0, 100.0),
                 RecipeIO::new(Item::PressureConversionCube, 1.0, 0.5),
@@ -491,6 +505,7 @@ mod tests {
         let recipe = Recipe {
             name: String::from("Iron Ingot"),
             alternate: false,
+            ficsmas: false,
             inputs: vec![RecipeIO::new(Item::IronOre, 1.0, 15.0)],
             outputs: vec![RecipeIO::new(Item::IronIngot, 1.0, 15.0)],
             craft_time: 4,
@@ -506,6 +521,7 @@ mod tests {
         let recipe = Recipe {
             name: String::from("Nuclear Pasta"),
             alternate: false,
+            ficsmas: false,
             inputs: vec![
                 RecipeIO::new(Item::CopperPowder, 200.0, 100.0),
                 RecipeIO::new(Item::PressureConversionCube, 1.0, 0.5),
@@ -524,6 +540,7 @@ mod tests {
         let recipe = Recipe {
             name: String::from("Plutonium Pellet"),
             alternate: false,
+            ficsmas: false,
             inputs: vec![
                 RecipeIO::new(Item::NonFissileUranium, 100.0, 100.0),
                 RecipeIO::new(Item::UraniumWaste, 25.0, 25.0),
@@ -542,6 +559,7 @@ mod tests {
         let recipe = Recipe {
             name: String::from("Nuclear Pasta"),
             alternate: false,
+            ficsmas: false,
             inputs: vec![
                 RecipeIO::new(Item::CopperPowder, 200.0, 100.0),
                 RecipeIO::new(Item::PressureConversionCube, 1.0, 0.5),
@@ -560,6 +578,7 @@ mod tests {
         let recipe = Recipe {
             name: String::from("Iron Ingot"),
             alternate: false,
+            ficsmas: false,
             inputs: vec![RecipeIO::new(Item::IronOre, 1.0, 15.0)],
             outputs: vec![RecipeIO::new(Item::IronIngot, 1.0, 15.0)],
             craft_time: 4,

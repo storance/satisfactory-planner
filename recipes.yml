@@ -535,6 +535,324 @@ recipes:
   # Tier 5 + 6
   #
 
+  # Fuel
+  - name: Fuel
+    alternate: false
+    inputs:
+      - Oil: 6
+    outputs:
+      - Fuel: 4
+      - Polymer Resin: 3
+    craft_time: 6
+    machine: Refinery
+  - name: Residual Fuel
+    alternate: true
+    inputs:
+      - Heavy Oil Residue: 6
+    outputs:
+      - Fuel: 4
+    craft_time: 6 
+    machine: Refinery
+  - name: Diluted Fuel
+    alternate: true
+    inputs:
+      - Heavy Oil Residue: 5
+      - Water: 10
+    outputs:
+      - Fuel: 10
+    craft_time: 6
+    machine: Blender
+  - name: Diluted Packaged Fuel
+    alternate: true
+    inputs:
+      - Heavy Oil Residue: 1
+      - Packaged Water: 2
+    outputs:
+      - Packaged Fuel: 2
+    craft_time: 2
+    machine: Refinery
+  - name: Unpackage Fuel
+    alternate: false
+    inputs:
+      - Packaged Fuel: 2
+    outputs:
+      - Fuel : 2
+      - Empty Canister: 2
+    craft_time: 2
+    machine: Packager
+  - name: Packaged Fuel
+    alternate: false
+    inputs:
+      - Empty Canister: 2
+    outputs:
+      - Fuel : 2
+      - Packaged Fuel: 2
+    craft_time: 3
+    machine: Packager
+  # Liquid Biofuel
+  - name: Liquid Biofuel
+    alternate: false
+    inputs:
+      - Solid Biofuel: 6
+      - Water: 3
+    outputs:
+      - Liquid Biofuel: 4
+    craft_time: 4
+    machine: Refinery
+  - name: Unpackage Liquid Biofuel
+    alternate: false
+    inputs:
+      - Packaged Liquid Biofuel: 2
+    outputs:
+      - Liquid Biofuel: 2
+      - Empty Canister: 2
+    craft_time: 2
+    machine: Packager
+  - name: Packaged Liquid Biofuel
+    alternate: false
+    inputs:
+      - Liquid Biofuel: 2
+      - Empty Canister: 2
+    outputs:
+      - Packaged Liquid Biofuel: 2
+    craft_time: 3
+    machine: Packager
+  # Water
+  - name: Unpackage Water
+    alternate: false
+    inputs:
+      - Packaged Water: 2
+    outputs:
+      - Water: 2
+      - Empty Canister: 2
+    craft_time: 1
+    machine: Packager
+  - name: Packaged Water
+    alternate: false
+    inputs:
+      - Water: 2
+      - Empty Canister: 2
+    outputs:
+      - Packaged Water: 2
+    craft_time: 2
+    machine: Packager
+  # Oil
+  - name: Unpackage Oil
+    alternate: false
+    inputs:
+      - Packaged Oil: 2
+    outputs:
+      - Oil: 2
+      - Empty Canister: 2
+    craft_time: 1
+    machine: Packager
+  - name: Packaged Oil
+    alternate: false
+    inputs:
+      - Oil: 2
+      - Empty Canister: 2
+    outputs:
+      - Packaged Oil: 2
+    craft_time: 4
+    machine: Packager
+  # Heavy Oil Residue
+  - name: Heavy Oil Residue
+    alternate: true
+    inputs:
+      - Oil: 3
+    outputs:
+      - Heavy Oil Residue: 4
+      - Polymer Resin: 2
+    craft_time: 6
+    machine: Refinery
+  - name: Unpackage Heavy Oil Residue
+    alternate: false
+    inputs:
+      - Packaged Heavy Oil Residue: 2
+    outputs:
+      - Heavy Oil Residue: 2
+      - Empty Canister: 2
+    craft_time: 6
+    machine: Packager
+  - name: Packaged Heavy Oil Residue
+    alternate: false
+    inputs:
+      - Heavy Oil Residue: 2
+      - Empty Canister: 2
+    outputs:
+      - Packaged Heavy Oil Residue: 2
+    craft_time: 4
+    machine: Packager
+  # Polymer Resin
+  - name: Polymer Resin
+    alternate: true
+    inputs:
+      - Oil: 6
+    outputs:
+      - Polymer Resin: 13
+      - Heavy Oil Residue: 2
+    craft_time: 6
+    machine: Refinery
+  # Petroleum Coke
+  - name: Petroleum Coke
+    alternate: false
+    inputs:
+      - Heavy Oil Residue: 4
+    outputs:
+      - Petroleum Coke: 12
+    craft_time: 6
+    machine: Refinery
+  # Rubber
+  - name: Rubber
+    alternate: false
+    inputs:
+      - Oil: 3
+    outputs:
+      - Rubber: 2
+      - Heavy Oil Residue: 2
+    craft_time: 6
+    machine: Refinery
+  - name: Residual Rubber
+    alternate: false
+    inputs:
+      - Polymer Resin: 4
+      - Water: 4
+    outputs:
+      - Rubber: 2
+    craft_time: 6
+    machine: Refinery
+  - name: Recycled Rubber
+    alternate: true
+    inputs:
+      - Plastic: 6
+      - Fuel: 6
+    outputs:
+      - Rubber: 12
+    craft_time: 12
+    machine: Refinery
+  # Plastic
+  - name: Plastic
+    alternate: false
+    inputs:
+      - Oil: 3
+    outputs:
+      - Plastic: 2
+      - Heavy Oil Residue: 1
+    craft_time: 6
+    machine: Refinery
+  - name: Residual Plastic
+    alternate: false
+    inputs:
+      - Polymer Resin: 6
+      - Water: 2
+    outputs:
+      - Plastic: 2
+    craft_time: 6
+    machine: Refinery
+  - name: Recycled Plastic
+    alternate: true
+    inputs:
+      - Rubber: 6
+      - Fuel: 6
+    outputs:
+      - Plastic: 12
+    craft_time: 12
+    machine: Refinery
+  # Circuit Board
+  - name: Circuit Board
+    alternate: false
+    inputs:
+      - Copper Sheet: 2
+      - Plastic: 4
+    outputs:
+      - Circuit Board: 1
+    craft_time: 8
+    machine: Assembler
+  - name: Caterium Circuit Board
+    alternate: true
+    inputs:
+      - Plastic: 10
+      - Quickwire: 30
+    outputs:
+      - Circuit Board: 7
+    craft_time: 48
+    machine: Assembler
+  - name: Electrode Circuit Board
+    alternate: true
+    inputs:
+      - Rubber: 6
+      - Petroleum Coke: 9
+    outputs:
+      - Circuit Board: 1
+    craft_time: 12
+    machine: Assembler
+  - name: Silicon Circuit Board
+    alternate: true
+    inputs:
+      - Copper Sheet: 11
+      - Silica: 11
+    outputs:
+      - Circuit Board: 5
+    craft_time: 24
+    machine: Assembler
+  # Computer
+  - name: Computer
+    alternate: false
+    inputs:
+      - Circuit Board: 10
+      - Plastic: 18
+      - Cable: 9
+      - Screw: 52
+    outputs:
+      - Computer: 1
+    craft_time: 24
+    machine: Manufacturer
+  - name: Caterium Computer
+    alternate: true
+    inputs:
+      - Circuit Board: 7
+      - Quickwire: 28
+      - Rubber: 12
+    outputs:
+      - Computer: 1
+    craft_time: 16
+    machine: Manufacturer
+  - name: Crystal Computer
+    alternate: true
+    inputs:
+      - Circuit Board: 8
+      - Crystal Oscillator: 3
+    outputs:
+      - Computer: 3
+    craft_time: 64
+    machine: Assembler
+  # Empty Canister
+  - name: Empty Canister
+    alternate: false
+    inputs:
+      - Plastic: 2
+    outputs:
+      - Empty Canister: 4
+    craft_time: 4
+    machine: Constructor
+  - name: Coated Iron Canister
+    alternate: false
+    inputs:
+      - Iron Plate: 2
+      - Copper Sheet: 1
+    outputs:
+      - Empty Canister: 4
+    craft_time: 4
+    machine: Assembler
+  - name: Steel Canister
+    alternate: true
+    inputs:
+      - Steel Ingot: 3
+    outputs:
+      - Empty Canister: 2
+    craft_time: 3
+    machine: Constructor
+
   #
   # Tier 7 + 8
   #
@@ -699,11 +1017,59 @@ recipes:
       - AI Limiter: 1
     craft_time: 12
     machine: Assembler
-
   # High-Speed Connector
-
+  - name: High-Speed Connector
+    alternate: false
+    inputs:
+      - Quickwire: 56
+      - Cable: 10
+      - Circuit Board: 1
+    outputs:
+      - High-Speed Connector: 1
+    craft_time: 16
+    machine: Manufacturer
+  - name: Silicon High-Speed Connector
+    alternate: true
+    inputs:
+      - Quickwire: 60
+      - Silica: 25
+      - Circuit Board: 2
+    outputs:
+      - High-Speed Connector: 2
+    craft_time: 40
+    machine: Manufacturer
   # Supercomputer
-
+  - name: Supercomputer
+    alternate: false
+    inputs:
+      - Computer: 2
+      - AI Limiter: 2
+      - High-Speed Connector: 3
+      - Plastic: 28
+    outputs:
+      - Supercomputer: 1
+    craft_time: 32
+    machine: Manufacturer
+  - name: OC Supercomputer
+    alternate: true
+    inputs:
+      - Radio Control Unit: 3
+      - Cooling System: 3
+    outputs:
+      - Supercomputer: 1
+    craft_time: 20
+    machine: Assembler
+  - name: Super-State Computer
+    alternate: true
+    inputs:
+      - Computer: 3
+      - Electromagnetic Control Rod: 2
+      - Battery: 20
+      - Wire: 45
+    outputs:
+      - Supercomputer: 2
+    craft_time: 50
+    machine: Manufacturer
   # Compacted Coal
   - name: Compacted Coal
     alternate: true
@@ -715,7 +1081,53 @@ recipes:
     craft_time: 12
     machine: Assembler
   # Turbofuel
-
+  - name: Unpackage Turbofuel
+    alternate: false
+    inputs:
+      - Packaged Turbofuel: 2
+    outputs:
+      - Turbofuel: 2
+      - Empty Canister: 2
+    craft_time: 6
+    machine: Packager
+  - name: Packaged Turbofuel
+    alternate: false
+    inputs:
+      - Turbofuel: 2
+      - Empty Canister: 2
+    outputs:
+      - Packaged Turbofuel: 2
+    craft_time: 6
+    machine: Packager
+  - name: Turbofuel
+    alternate: true
+    inputs:
+      - Fuel: 6
+      - Compacted Coal: 4
+    outputs:
+      - Turbofuel: 5
+    craft_time: 16
+    machine: Refinery
+  - name: Turbo Heavy Fuel
+    alternate: true
+    inputs:
+      - Heavy Oil Residue: 5
+      - Compacted Coal: 4
+    outputs:
+      - Turbofuel: 4
+    craft_time: 8
+    machine: Refinery
+  - name: Turbo Blend Fuel
+    alternate: true
+    inputs:
+      - Fuel: 2
+      - Heavy Oil Residue: 4
+      - Sulfur: 3
+      - Petroleum Coke: 3
+    outputs:
+      - Turbofuel: 6
+    craft_time: 8
+    machine: Blender
   # Black Powder
   - name: Black Powder
     inputs:
@@ -782,6 +1194,33 @@ recipes:
       - Beacon: 20
     craft_time: 120
     machine: Manufacturer
+  # Iron Rebar
+
+  # Stun Rebar
+
+  # Shatter Rebar
+
+  # Explosive Rebar
+
+  # Nobelisk
+
+  # Gas Nobelisk
+
+  # Pulse Nobelisk
+
+  # Cluster Nobelisk
+
+  # Nuke Nobelisk
+
+  # Rifle Ammo
+
+  # Homing Rifle Ammo
+
+  # Turbo Rifle Ammo
+
+  # Gas Filter
+
+  # Iodine Infused Filter
 
   #
   # Space Elevator Parts
@@ -846,4 +1285,27 @@ recipes:
     outputs:
       - Automated Wiring: 4
     craft_time: 32
+    machine: Manufacturer
+  # Modular Engine
+  - name: Modular Engine
+    alternate: false
+    inputs:
+      - Motor: 2
+      - Smart Plating: 2
+      - Rubber: 15
+    outputs:
+      - Modular Engine: 1
+    craft_time: 60
+    machine: Manufacturer
+  # Adaptive Control Unit
+  - name: Adaptive Control Unit
+    alternate: false
+    inputs:
+      - Automated Wiring: 15
+      - Heavy Modular Frame: 2
+      - Circuit Board: 10
+      - Computer: 2
+    outputs:
+      - Adaptive Control Unit: 2
+    craft_time: 120
     machine: Manufacturer

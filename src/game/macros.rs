@@ -296,11 +296,11 @@ macro_rules! machine_helper {
 
     // Inputs
     (
-        @inputs $name: ident(inputs: [$($inputs:tt),+] $(, $($t:tt)*)?)
+        @inputs $name: ident(inputs: [$($inputs:tt),*] $(, $($t:tt)*)?)
     ) => {
         MachineIO::new(
-            $crate::machine_helper!(@sum_items [$($inputs),+]),
-            $crate::machine_helper!(@sum_fluids [$($inputs),+])
+            $crate::machine_helper!(@sum_items [$($inputs),*]),
+            $crate::machine_helper!(@sum_fluids [$($inputs),*])
         )
     };
     (

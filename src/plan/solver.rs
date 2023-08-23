@@ -999,6 +999,7 @@ mod tests {
             Recipe {
                 name: "Iron Ingot".into(),
                 alternate: false,
+                ficsmas: false,
                 inputs: vec![RecipeIO::new(Item::IronOre, 1.0, 30.0)],
                 outputs: vec![RecipeIO::new(Item::IronIngot, 1.0, 30.0)],
                 power_multiplier: 1.0,
@@ -1008,6 +1009,7 @@ mod tests {
             Recipe {
                 name: "Copper Ingot".into(),
                 alternate: false,
+                ficsmas: false,
                 inputs: vec![RecipeIO::new(Item::CopperOre, 1.0, 30.0)],
                 outputs: vec![RecipeIO::new(Item::CopperIngot, 1.0, 30.0)],
                 power_multiplier: 1.0,
@@ -1017,6 +1019,7 @@ mod tests {
             Recipe {
                 name: "Caterium Ingot".into(),
                 alternate: false,
+                ficsmas: false,
                 inputs: vec![RecipeIO::new(Item::CateriumOre, 3.0, 45.0)],
                 outputs: vec![RecipeIO::new(Item::CateriumIngot, 1.0, 15.0)],
                 power_multiplier: 1.0,
@@ -1026,6 +1029,7 @@ mod tests {
             Recipe {
                 name: "Pure Iron Ingot".into(),
                 alternate: true,
+                ficsmas: false,
                 inputs: vec![
                     RecipeIO::new(Item::IronOre, 7.0, 35.0),
                     RecipeIO::new(Item::Water, 5.0, 20.0),
@@ -1038,6 +1042,7 @@ mod tests {
             Recipe {
                 name: "Iron Alloy Ingot".into(),
                 alternate: true,
+                ficsmas: false,
                 inputs: vec![
                     RecipeIO::new(Item::IronOre, 2.0, 20.0),
                     RecipeIO::new(Item::CopperOre, 2.0, 20.0),
@@ -1050,6 +1055,7 @@ mod tests {
             Recipe {
                 name: "Iron Plate".into(),
                 alternate: false,
+                ficsmas: false,
                 inputs: vec![RecipeIO::new(Item::IronIngot, 3.0, 30.0)],
                 outputs: vec![RecipeIO::new(Item::IronPlate, 2.0, 20.0)],
                 power_multiplier: 1.0,
@@ -1059,6 +1065,7 @@ mod tests {
             Recipe {
                 name: "Iron Rod".into(),
                 alternate: false,
+                ficsmas: false,
                 inputs: vec![RecipeIO::new(Item::IronIngot, 1.0, 15.0)],
                 outputs: vec![RecipeIO::new(Item::IronRod, 1.0, 15.0)],
                 power_multiplier: 1.0,
@@ -1068,6 +1075,7 @@ mod tests {
             Recipe {
                 name: "Wire".into(),
                 alternate: false,
+                ficsmas: false,
                 inputs: vec![RecipeIO::new(Item::CopperIngot, 1.0, 15.0)],
                 outputs: vec![RecipeIO::new(Item::Wire, 2.0, 30.0)],
                 power_multiplier: 1.0,
@@ -1077,6 +1085,7 @@ mod tests {
             Recipe {
                 name: "Iron Wire".into(),
                 alternate: true,
+                ficsmas: false,
                 inputs: vec![RecipeIO::new(Item::IronIngot, 5.0, 12.5)],
                 outputs: vec![RecipeIO::new(Item::Wire, 9.0, 22.5)],
                 power_multiplier: 1.0,
@@ -1086,6 +1095,7 @@ mod tests {
             Recipe {
                 name: "Caterium Wire".into(),
                 alternate: true,
+                ficsmas: false,
                 inputs: vec![RecipeIO::new(Item::CateriumIngot, 1.0, 15.0)],
                 outputs: vec![RecipeIO::new(Item::Wire, 8.0, 120.0)],
                 power_multiplier: 1.0,
@@ -1095,6 +1105,7 @@ mod tests {
             Recipe {
                 name: "Fused Wire".into(),
                 alternate: true,
+                ficsmas: false,
                 inputs: vec![
                     RecipeIO::new(Item::CateriumIngot, 1.0, 3.0),
                     RecipeIO::new(Item::CopperIngot, 4.0, 12.0),

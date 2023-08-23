@@ -16,7 +16,7 @@ item_definition!(
         SAMOre(name: "SAM Ore", extractable),
         Sulfur(name: "Sulfur", extractable, sink_points: 11),
         Water(name: "Water", extractable, fluid),
-        CrudeOil(name: "Crude Oil", extractable, fluid),
+        Oil(name: "Oil", extractable, fluid),
         NitrogenGas(name: "Nitrogen Gas", extractable, fluid),
 
         // Other Resources
@@ -120,7 +120,7 @@ item_definition!(
         EmptyFluidTank(name: "Empty Fluid Tank", sink_points: 225),
         EmptyCanister(name: "Empty Canister", sink_points: 60),
         PackagedWater(name: "Packaged Water", sink_points: 130),
-        PackagedCrudeOil(name: "Packaged Crude Oil", sink_points: 180),
+        PackagedOil(name: "Packaged Oil", sink_points: 180),
         PackagedNitrogenGas(name: "Packaged Nitrogen Gas", sink_points: 312),
         PackagedLiquidBiofuel(name: "Packaged Liquid Biofuel", sink_points: 370),
         PackagedHeavyOilResidue(name: "Packaged Heavy Oil Residue", sink_points: 180),
@@ -158,6 +158,24 @@ item_definition!(
         AssemblyDirectorSystem(name: "Assembly Director System", sink_points: 543632),
         MagneticFieldGenerator(name: "Magnetic Field Generator", sink_points: 15650),
         ThermalPropulsionRocket(name: "Thermal Propulsion Rocket", sink_points: 732956),
-        NuclearPasta(name: "Nuclear Pasta", sink_points: 543424)
+        NuclearPasta(name: "Nuclear Pasta", sink_points: 543424),
+
+        // ficsmas
+        FicsmasGift(name: "FICSMAS Gift", sink_points: 1),
+        FicsmasTreeBranch(name: "FICSMAS Tree Branch", sink_points: 1),
+        CandyCane(name: "Candy Cane", sink_points: 1),
+        FicsmasBow(name: "FICSMAS Bow", sink_points: 1),
+        RedFicsmasOrnament(name: "Red FICSMAS Ornament", sink_points: 1),
+        BlueFicsmasOrnament(name: "Blue FICSMAS Ornament", sink_points: 1),
+        IronFicsmasOrnament(name: "Iron FICSMAS Ornament", sink_points: 1),
+        CopperFicsmasOrnament(name: "Copper FICSMAS Ornament", sink_points: 1),
+        FicsmasOrnamentBundle(name: "FICSMAS Ornament Bundle", sink_points: 1),
+        ActualSnow(name: "Actual Snow", sink_points: 1),
+        FicsmasDecoration(name: "FICSMAS Decoration", sink_points: 1),
+        Snowball(name: "Snowball", sink_points: 1),
+        FicsmasWonderStar(name: "FICSMAS Wonder Star", sink_points: 1),
+        SweetFireworks(name: "Sweet Fireworks", sink_points: 18),
+        FancyFireworks(name: "Fancy Fireworks", sink_points: 14),
+        SparklyFireworks(name: "Sparkly Fireworks", sink_points: 10)
     }
 );

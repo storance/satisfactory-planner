@@ -15,7 +15,8 @@ machine_definition!(
         Refinery(name: "Refinery", power: 30, inputs: [Item, Fluid], outputs: [Item, Fluid]),
         Packager(name: "Packager", power: 10, inputs: [Item, Fluid], outputs: [Item, Fluid]),
         Blender(name: "Blender", power: 75, inputs: [Item, Item, Fluid, Fluid], outputs: [Item, Fluid]),
-        ParticleAccelerator(name: "Particle Accelerator", min_power: 250, max_power: 750, inputs: [Item, Item, Fluid], outputs: [Item])
+        ParticleAccelerator(name: "Particle Accelerator", min_power: 250, max_power: 750, inputs: [Item, Item, Fluid], outputs: [Item]),
+        FicsmasGiftTree(name: "FICSMAS Gift Tree", power: 0, inputs: [], outputs: [Item])
     }
 );
 

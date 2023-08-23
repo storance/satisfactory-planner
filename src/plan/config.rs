@@ -13,7 +13,7 @@ pub static DEFAULT_LIMITS: [(Item, f64); 13] = [
     (Item::CateriumOre, 12040.0),
     (Item::Coal, 30900.0),
     (Item::CopperOre, 28860.0),
-    (Item::CrudeOil, 11700.0),
+    (Item::Oil, 11700.0),
     (Item::IronOre, 70380.0),
     (Item::Limestone, 52860.0),
     (Item::NitrogenGas, 12000.0),
@@ -30,6 +30,7 @@ enum RecipeMatcher {
     IncludeByName(String),
     IncludeByOutputItem(Item),
     ExcludeByName(String),
+    IncludeFicsmas,
 }
 
 impl RecipeMatcher {
@@ -48,6 +49,7 @@ impl RecipeMatcher {
             Self::IncludeByAlternate(..) => true,
             Self::IncludeByName(..) => true,
             Self::IncludeByOutputItem(..) => true,
+            Self::IncludeFicsmas => true,
             Self::ExcludeByName(..) => false,
         }
     }
@@ -74,10 +76,11 @@ impl RecipeMatcher {
 
     pub fn matches(&self, recipe: &Recipe) -> bool {
         match self {
-            Self::IncludeByAlternate(is_alt) => recipe.alternate == *is_alt,
+            Self::IncludeByAlternate(is_alt) => !recipe.ficsmas && recipe.alternate == *is_alt,
             Self::IncludeByName(recipe_name) => recipe.name.eq_ignore_ascii_case(recipe_name),
             Self::IncludeByOutputItem(item) => recipe.has_output_item(*item),
             Self::ExcludeByName(recipe_name) => recipe.name.eq_ignore_ascii_case(recipe_name),
+            Self::IncludeFicsmas => recipe.ficsmas,
         }
     }
 }
@@ -111,6 +114,8 @@ impl<'de> Visitor<'de> for RecipeMatcherVisitor {
             Ok(RecipeMatcher::IncludeByAlternate(false))
         } else if v.eq_ignore_ascii_case("alternates") || v.eq_ignore_ascii_case("alts") {
             Ok(RecipeMatcher::IncludeByAlternate(true))
+        } else if v.eq_ignore_ascii_case("ficsmas") {
+            Ok(RecipeMatcher::IncludeFicsmas)
         } else {
             Ok(RecipeMatcher::IncludeByName(v.into()))
         }
@@ -254,6 +259,7 @@ mod test {
             - Pure Iron Ingot
             - exclude: Iron Alloy Ingot
             - output: Copper Ingot
+            - ficsmas
         #";
 
         let result: Result<Vec<RecipeMatcher>, serde_yaml::Error> = serde_yaml::from_str(yaml);
@@ -268,6 +274,7 @@ mod test {
                 RecipeMatcher::IncludeByName("Pure Iron Ingot".into()),
                 RecipeMatcher::ExcludeByName("Iron Alloy Ingot".into()),
                 RecipeMatcher::IncludeByOutputItem(Item::CopperIngot),
+                RecipeMatcher::IncludeFicsmas
             ]
         );
     }
@@ -277,7 +284,9 @@ mod test {
         let base_matcher = RecipeMatcher::IncludeByAlternate(false);
         let pure_iron_ingot = get_pure_iron_ingot_recipe();
         let copper_ingot = get_copper_ingot_recipe();
+        let actual_snow = get_actual_snow_recipe();
 
+        assert!(!base_matcher.matches(&actual_snow));
         assert!(!base_matcher.matches(&pure_iron_ingot));
         assert!(base_matcher.matches(&copper_ingot));
     }
@@ -287,7 +296,9 @@ mod test {
         let alts_matcher = RecipeMatcher::IncludeByAlternate(true);
         let pure_iron_ingot = get_pure_iron_ingot_recipe();
         let copper_ingot = get_copper_ingot_recipe();
+        let actual_snow = get_actual_snow_recipe();
 
+        assert!(!alts_matcher.matches(&actual_snow));
         assert!(alts_matcher.matches(&pure_iron_ingot));
         assert!(!alts_matcher.matches(&copper_ingot));
     }
@@ -326,10 +337,21 @@ mod test {
         assert!(output_item_matcher.matches(&copper_ingot));
     }
 
+    #[test]
+    fn recipe_matcher_include_ficsmas_matches() {
+        let ficsmas_matcher = RecipeMatcher::IncludeFicsmas;
+        let actual_snow = get_actual_snow_recipe();
+        let copper_ingot = get_copper_ingot_recipe();
+
+        assert!(ficsmas_matcher.matches(&actual_snow));
+        assert!(!ficsmas_matcher.matches(&copper_ingot));
+    }
+
     fn get_copper_ingot_recipe() -> Recipe {
         Recipe {
             name: "Copper Ingot".into(),
             alternate: false,
+            ficsmas: false,
             inputs: vec![RecipeIO::new(Item::CopperOre, 1.0, 30.0)],
             outputs: vec![RecipeIO::new(Item::CopperIngot, 1.0, 30.0)],
             power_multiplier: 1.0,
@@ -338,10 +360,24 @@ mod test {
         }
     }
 
+    fn get_actual_snow_recipe() -> Recipe {
+        Recipe {
+            name: "Actual Snow".into(),
+            alternate: false,
+            ficsmas: true,
+            inputs: vec![RecipeIO::new(Item::FicsmasGift, 5.0, 25.0)],
+            outputs: vec![RecipeIO::new(Item::ActualSnow, 2.0, 10.0)],
+            power_multiplier: 1.0,
+            craft_time: 12,
+            machine: Machine::Constructor,
+        }
+    }
+
     fn get_pure_iron_ingot_recipe() -> Recipe {
         Recipe {
             name: "Pure Iron Ingot".into(),
             alternate: true,
+            ficsmas: false,
             inputs: vec![
                 RecipeIO::new(Item::IronOre, 7.0, 35.0),
                 RecipeIO::new(Item::Water, 5.0, 20.0),

@@ -70,7 +70,7 @@ mod test {
     #[test]
     fn test_union() {
         let a = construct_bit_set(&[Item::IronOre, Item::CopperOre, Item::CateriumOre]);
-        let b = construct_bit_set(&[Item::IronOre, Item::Water, Item::CrudeOil]);
+        let b = construct_bit_set(&[Item::IronOre, Item::Water, Item::Oil]);
 
         let merged = a.union(&b);
         assert_eq!(merged.len(), 5);
@@ -81,7 +81,7 @@ mod test {
                 Item::CopperOre,
                 Item::CateriumOre,
                 Item::Water,
-                Item::CrudeOil
+                Item::Oil
             ])
         )
     }
@@ -120,7 +120,7 @@ mod test {
         assert!(bit_set.contains(Item::CopperOre));
         assert!(bit_set.contains(Item::CateriumOre));
         assert!(!bit_set.contains(Item::Water));
-        assert!(!bit_set.contains(Item::CrudeOil));
+        assert!(!bit_set.contains(Item::Oil));
         assert!(!bit_set.contains(Item::NitrogenGas));
         assert!(!bit_set.contains(Item::Coal));
         assert!(!bit_set.contains(Item::Sulfur));
