@@ -324,7 +324,8 @@ mod test {
     }
 
     fn get_copper_ingot_recipe() -> Recipe {
-        let copper_ingot = Recipe {
+        
+        Recipe {
             name: "Copper Ingot".into(),
             alternate: false,
             inputs: vec![RecipeIO::new(Item::CopperOre, 1.0, 30.0)],
@@ -332,12 +333,12 @@ mod test {
             power_multiplier: 1.0,
             craft_time: 2,
             machine: Machine::Smelter,
-        };
-        copper_ingot
+        }
     }
 
     fn get_pure_iron_ingot_recipe() -> Recipe {
-        let pure_iron_ingot = Recipe {
+        
+        Recipe {
             name: "Pure Iron Ingot".into(),
             alternate: true,
             inputs: vec![
@@ -348,7 +349,6 @@ mod test {
             power_multiplier: 1.0,
             craft_time: 12,
             machine: Machine::Refinery,
-        };
-        pure_iron_ingot
+        }
     }
 }

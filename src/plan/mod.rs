@@ -19,6 +19,7 @@ pub enum PlanError {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
+#[derive(Default)]
 struct ItemBitSet(u16);
 
 #[allow(dead_code)]
@@ -62,11 +63,7 @@ impl ItemBitSet {
     }
 }
 
-impl Default for ItemBitSet {
-    fn default() -> Self {
-        Self(Default::default())
-    }
-}
+
 
 #[cfg(test)]
 mod test {
