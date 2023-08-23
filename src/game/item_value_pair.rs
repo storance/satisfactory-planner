@@ -3,7 +3,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::fmt::Debug;
-use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Sub, SubAssign};
 
 use crate::game::Item;
 
@@ -89,17 +89,12 @@ impl MulAssign<f64> for ItemValuePair {
     }
 }
 
-impl Div<f64> for ItemValuePair {
-    type Output = Self;
+impl Div<ItemValuePair> for ItemValuePair {
+    type Output = f64;
 
-    fn div(self, rhs: f64) -> Self::Output {
-        self.with_value(self.value / rhs)
-    }
-}
-
-impl DivAssign<f64> for ItemValuePair {
-    fn div_assign(&mut self, rhs: f64) {
-        self.value /= rhs;
+    fn div(self, rhs: ItemValuePair) -> Self::Output {
+        assert!(self.item == rhs.item);
+        self.value / rhs.value
     }
 }
 

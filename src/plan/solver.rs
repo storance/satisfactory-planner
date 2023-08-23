@@ -1,4 +1,4 @@
-use crate::game::{Item, ItemValuePair, Recipe, RecipeIO};
+use crate::game::{Item, ItemValuePair, Recipe};
 use crate::plan::{find_production_node, ItemBitSet, NodeValue, PlanConfig};
 
 use petgraph::graph::NodeIndex;
@@ -193,7 +193,7 @@ fn merge_production_node<'a>(
     dest_graph: &mut GraphType<'a>,
     input_limits: &mut HashMap<Item, f64>,
 ) -> SolverResult<(NodeIndex, ItemValuePair)> {
-    let recipe_output = production
+    let recipe_output = *production
         .recipe
         .find_output_by_item(desired_output.item)
         .unwrap();
@@ -206,24 +206,21 @@ fn merge_production_node<'a>(
         src_graph,
     );
 
-    let machine_count = desired_output.value / recipe_output.amount_per_minute;
+    let machine_count = desired_output / recipe_output;
     let mut min_machine_count = machine_count;
     let mut new_children_by_inputs: Vec<Vec<(NodeIndex, ItemValuePair)>> = Vec::new();
     for (item, children) in children_by_items {
-        let recipe_input = production.recipe.find_input_by_item(item).unwrap();
+        let recipe_input = *production.recipe.find_input_by_item(item).unwrap();
 
         let (new_children, actual_output) = merge_production_children(
-            recipe_input.to_amount_per_minute_pair() * machine_count,
+            recipe_input * machine_count,
             children,
             src_graph,
             dest_graph,
             input_limits,
         );
         new_children_by_inputs.push(new_children);
-        min_machine_count = f64::min(
-            min_machine_count,
-            actual_output.value / recipe_input.amount_per_minute,
-        );
+        min_machine_count = f64::min(min_machine_count, actual_output / recipe_input);
     }
 
     let new_node_index =
@@ -240,13 +237,12 @@ fn merge_production_node<'a>(
         }
     }
 
-    let reduced_output = recipe_output.to_amount_per_minute_pair()
-        * f64::max(0.0, machine_count - min_machine_count);
+    let reduced_output = recipe_output * f64::max(0.0, machine_count - min_machine_count);
     reduce_node_output(new_node_index, reduced_output, dest_graph, input_limits);
 
     Ok((
         new_node_index,
-        desired_output - (recipe_output.amount_per_minute * min_machine_count),
+        desired_output - (recipe_output * min_machine_count),
     ))
 }
 
@@ -306,7 +302,7 @@ fn create_or_update_production_node<'a>(
 }
 
 fn group_production_children<N, E, I, S>(
-    inputs: &[RecipeIO],
+    inputs: &[ItemValuePair],
     index: NodeIndex,
     get_edge_item: I,
     mut sort_cmp: S,
@@ -405,14 +401,11 @@ fn reduce_production_node_output(
     graph: &mut GraphType<'_>,
     input_limits: &mut HashMap<Item, f64>,
 ) -> bool {
-    let recipe_output = recipe.find_output_by_item(reduce_amount.item).unwrap();
+    let recipe_output = *recipe.find_output_by_item(reduce_amount.item).unwrap();
     let new_machine_count = {
         let machine_count = &mut graph[node_index].as_production_mut().machine_count;
 
-        *machine_count = f64::max(
-            0.0,
-            *machine_count - reduce_amount.value / recipe_output.amount_per_minute,
-        );
+        *machine_count = f64::max(0.0, *machine_count - reduce_amount / recipe_output);
         *machine_count
     };
 
@@ -425,9 +418,9 @@ fn reduce_production_node_output(
     );
 
     for (item, children) in children_by_items {
-        let recipe_input = recipe.find_input_by_item(item).unwrap();
+        let recipe_input = *recipe.find_input_by_item(item).unwrap();
         reduce_production_node_children(
-            recipe_input.to_amount_per_minute_pair() * new_machine_count,
+            recipe_input * new_machine_count,
             children,
             graph,
             input_limits,
@@ -510,7 +503,7 @@ fn build_single_output_graph_level<'a>(
                 .recipe
                 .inputs
                 .iter()
-                .map(|input| input.to_amount_per_minute_pair() * production.machine_count)
+                .map(|input| *input * production.machine_count)
                 .collect(),
             NodeValue::Output(output, ..) => vec![output],
             _ => vec![],
@@ -551,7 +544,7 @@ fn create_production_nodes<'a>(
         .find_recipe_by_output(item_value.item)
         .map(|recipe| {
             let output = recipe.find_output_by_item(item_value.item).unwrap();
-            let machine_count = item_value.value / output.amount_per_minute;
+            let machine_count = item_value / *output;
 
             let child_node = ScoredNodeValue::new_production(recipe, machine_count);
             let child_index = graph.add_node(child_node);
@@ -699,7 +692,7 @@ fn item_combinations(inputs_by_item: &HashMap<Item, Vec<ItemBitSet>>) -> Vec<Ite
 mod tests {
     use petgraph::visit::IntoEdgeReferences;
 
-    use crate::game::{Machine, RecipeIO};
+    use crate::game::Machine;
 
     use super::*;
 
@@ -1000,30 +993,27 @@ mod tests {
                 name: "Iron Ingot".into(),
                 alternate: false,
                 ficsmas: false,
-                inputs: vec![RecipeIO::new(Item::IronOre, 1.0, 30.0)],
-                outputs: vec![RecipeIO::new(Item::IronIngot, 1.0, 30.0)],
+                inputs: vec![ItemValuePair::new(Item::IronOre, 30.0)],
+                outputs: vec![ItemValuePair::new(Item::IronIngot, 30.0)],
                 power_multiplier: 1.0,
-                craft_time: 2,
                 machine: Machine::Smelter,
             },
             Recipe {
                 name: "Copper Ingot".into(),
                 alternate: false,
                 ficsmas: false,
-                inputs: vec![RecipeIO::new(Item::CopperOre, 1.0, 30.0)],
-                outputs: vec![RecipeIO::new(Item::CopperIngot, 1.0, 30.0)],
+                inputs: vec![ItemValuePair::new(Item::CopperOre, 30.0)],
+                outputs: vec![ItemValuePair::new(Item::CopperIngot, 30.0)],
                 power_multiplier: 1.0,
-                craft_time: 2,
                 machine: Machine::Smelter,
             },
             Recipe {
                 name: "Caterium Ingot".into(),
                 alternate: false,
                 ficsmas: false,
-                inputs: vec![RecipeIO::new(Item::CateriumOre, 3.0, 45.0)],
-                outputs: vec![RecipeIO::new(Item::CateriumIngot, 1.0, 15.0)],
+                inputs: vec![ItemValuePair::new(Item::CateriumOre, 45.0)],
+                outputs: vec![ItemValuePair::new(Item::CateriumIngot, 15.0)],
                 power_multiplier: 1.0,
-                craft_time: 4,
                 machine: Machine::Smelter,
             },
             Recipe {
@@ -1031,12 +1021,11 @@ mod tests {
                 alternate: true,
                 ficsmas: false,
                 inputs: vec![
-                    RecipeIO::new(Item::IronOre, 7.0, 35.0),
-                    RecipeIO::new(Item::Water, 5.0, 20.0),
+                    ItemValuePair::new(Item::IronOre, 35.0),
+                    ItemValuePair::new(Item::Water, 20.0),
                 ],
-                outputs: vec![RecipeIO::new(Item::IronIngot, 13.0, 65.0)],
+                outputs: vec![ItemValuePair::new(Item::IronIngot, 65.0)],
                 power_multiplier: 1.0,
-                craft_time: 12,
                 machine: Machine::Refinery,
             },
             Recipe {
@@ -1044,62 +1033,56 @@ mod tests {
                 alternate: true,
                 ficsmas: false,
                 inputs: vec![
-                    RecipeIO::new(Item::IronOre, 2.0, 20.0),
-                    RecipeIO::new(Item::CopperOre, 2.0, 20.0),
+                    ItemValuePair::new(Item::IronOre, 20.0),
+                    ItemValuePair::new(Item::CopperOre, 20.0),
                 ],
-                outputs: vec![RecipeIO::new(Item::IronIngot, 5.0, 50.0)],
+                outputs: vec![ItemValuePair::new(Item::IronIngot, 50.0)],
                 power_multiplier: 1.0,
-                craft_time: 6,
                 machine: Machine::Foundry,
             },
             Recipe {
                 name: "Iron Plate".into(),
                 alternate: false,
                 ficsmas: false,
-                inputs: vec![RecipeIO::new(Item::IronIngot, 3.0, 30.0)],
-                outputs: vec![RecipeIO::new(Item::IronPlate, 2.0, 20.0)],
+                inputs: vec![ItemValuePair::new(Item::IronIngot, 30.0)],
+                outputs: vec![ItemValuePair::new(Item::IronPlate, 20.0)],
                 power_multiplier: 1.0,
-                craft_time: 6,
                 machine: Machine::Constructor,
             },
             Recipe {
                 name: "Iron Rod".into(),
                 alternate: false,
                 ficsmas: false,
-                inputs: vec![RecipeIO::new(Item::IronIngot, 1.0, 15.0)],
-                outputs: vec![RecipeIO::new(Item::IronRod, 1.0, 15.0)],
+                inputs: vec![ItemValuePair::new(Item::IronIngot, 15.0)],
+                outputs: vec![ItemValuePair::new(Item::IronRod, 15.0)],
                 power_multiplier: 1.0,
-                craft_time: 4,
                 machine: Machine::Smelter,
             },
             Recipe {
                 name: "Wire".into(),
                 alternate: false,
                 ficsmas: false,
-                inputs: vec![RecipeIO::new(Item::CopperIngot, 1.0, 15.0)],
-                outputs: vec![RecipeIO::new(Item::Wire, 2.0, 30.0)],
+                inputs: vec![ItemValuePair::new(Item::CopperIngot, 15.0)],
+                outputs: vec![ItemValuePair::new(Item::Wire, 30.0)],
                 power_multiplier: 1.0,
-                craft_time: 4,
                 machine: Machine::Constructor,
             },
             Recipe {
                 name: "Iron Wire".into(),
                 alternate: true,
                 ficsmas: false,
-                inputs: vec![RecipeIO::new(Item::IronIngot, 5.0, 12.5)],
-                outputs: vec![RecipeIO::new(Item::Wire, 9.0, 22.5)],
+                inputs: vec![ItemValuePair::new(Item::IronIngot, 12.5)],
+                outputs: vec![ItemValuePair::new(Item::Wire, 22.5)],
                 power_multiplier: 1.0,
-                craft_time: 24,
                 machine: Machine::Constructor,
             },
             Recipe {
                 name: "Caterium Wire".into(),
                 alternate: true,
                 ficsmas: false,
-                inputs: vec![RecipeIO::new(Item::CateriumIngot, 1.0, 15.0)],
-                outputs: vec![RecipeIO::new(Item::Wire, 8.0, 120.0)],
+                inputs: vec![ItemValuePair::new(Item::CateriumIngot, 15.0)],
+                outputs: vec![ItemValuePair::new(Item::Wire, 120.0)],
                 power_multiplier: 1.0,
-                craft_time: 4,
                 machine: Machine::Constructor,
             },
             Recipe {
@@ -1107,12 +1090,11 @@ mod tests {
                 alternate: true,
                 ficsmas: false,
                 inputs: vec![
-                    RecipeIO::new(Item::CateriumIngot, 1.0, 3.0),
-                    RecipeIO::new(Item::CopperIngot, 4.0, 12.0),
+                    ItemValuePair::new(Item::CateriumIngot, 3.0),
+                    ItemValuePair::new(Item::CopperIngot, 12.0),
                 ],
-                outputs: vec![RecipeIO::new(Item::Wire, 30.0, 90.0)],
+                outputs: vec![ItemValuePair::new(Item::Wire, 90.0)],
                 power_multiplier: 1.0,
-                craft_time: 20,
                 machine: Machine::Assembler,
             },
         ]

@@ -25,21 +25,13 @@ struct RecipesRoot {
     pub recipes: Vec<RecipeDefinition>,
 }
 
-#[derive(Debug, Copy, Clone)]
-pub struct RecipeIO {
-    pub item: Item,
-    pub amount: f64,
-    pub amount_per_minute: f64,
-}
-
 #[derive(Debug, Clone)]
 pub struct Recipe {
     pub name: String,
     pub alternate: bool,
     pub ficsmas: bool,
-    pub outputs: Vec<RecipeIO>,
-    pub inputs: Vec<RecipeIO>,
-    pub craft_time: u32,
+    pub outputs: Vec<ItemValuePair>,
+    pub inputs: Vec<ItemValuePair>,
     pub power_multiplier: f32,
     pub machine: Machine,
 }
@@ -157,11 +149,11 @@ impl Recipe {
     }
 
     #[allow(dead_code)]
-    pub fn find_input_by_item(&self, item: Item) -> Option<&RecipeIO> {
+    pub fn find_input_by_item(&self, item: Item) -> Option<&ItemValuePair> {
         self.inputs.iter().find(|output| output.item == item)
     }
 
-    pub fn find_output_by_item(&self, item: Item) -> Option<&RecipeIO> {
+    pub fn find_output_by_item(&self, item: Item) -> Option<&ItemValuePair> {
         self.outputs.iter().find(|output| output.item == item)
     }
 
@@ -182,12 +174,12 @@ impl From<RecipeDefinition> for Recipe {
         let inputs = recipe
             .inputs
             .iter()
-            .map(|rv| RecipeIO::from(rv, crafts_per_min))
+            .map(|input| *input * crafts_per_min)
             .collect();
         let outputs = recipe
             .outputs
             .iter()
-            .map(|rv| RecipeIO::from(rv, crafts_per_min))
+            .map(|output| *output * crafts_per_min)
             .collect();
 
         Self {
@@ -196,38 +188,9 @@ impl From<RecipeDefinition> for Recipe {
             ficsmas: recipe.ficsmas,
             outputs,
             inputs,
-            craft_time: recipe.craft_time,
             power_multiplier: recipe.power_multiplier,
             machine: recipe.machine,
         }
-    }
-}
-
-impl RecipeIO {
-    #[allow(dead_code)]
-    pub fn new(item: Item, amount: f64, amount_per_minute: f64) -> Self {
-        Self {
-            item,
-            amount,
-            amount_per_minute,
-        }
-    }
-
-    pub fn from(iv: &ItemValuePair, crafts_per_minute: f64) -> Self {
-        Self {
-            item: iv.item,
-            amount: iv.value,
-            amount_per_minute: iv.value * crafts_per_minute,
-        }
-    }
-
-    pub fn to_amount_per_minute_pair(self) -> ItemValuePair {
-        ItemValuePair::new(self.item, self.amount_per_minute)
-    }
-
-    #[allow(dead_code)]
-    pub fn to_amount_pair(self) -> ItemValuePair {
-        ItemValuePair::new(self.item, self.amount)
     }
 }
 
@@ -245,22 +208,6 @@ mod tests {
     use std::vec;
 
     use super::*;
-
-    #[test]
-    fn recipeio_to_amount() {
-        assert_eq!(
-            RecipeIO::new(Item::IronIngot, 1.0, 15.0).to_amount_pair(),
-            ItemValuePair::new(Item::IronIngot, 1.0)
-        );
-    }
-
-    #[test]
-    fn recipeio_to_amount_per_minute() {
-        assert_eq!(
-            RecipeIO::new(Item::IronIngot, 1.0, 15.0).to_amount_per_minute_pair(),
-            ItemValuePair::new(Item::IronIngot, 15.0)
-        );
-    }
 
     #[test]
     fn convert() {
@@ -283,9 +230,8 @@ mod tests {
             name: String::from("Iron Ingot"),
             alternate: false,
             ficsmas: false,
-            inputs: vec![RecipeIO::new(Item::IronOre, 1.0, 15.0)],
-            outputs: vec![RecipeIO::new(Item::IronIngot, 1.0, 15.0)],
-            craft_time: 4,
+            inputs: vec![ItemValuePair::new(Item::IronOre, 15.0)],
+            outputs: vec![ItemValuePair::new(Item::IronIngot, 15.0)],
             power_multiplier: 1.0,
             machine: Machine::Smelter,
         };
@@ -471,9 +417,8 @@ mod tests {
             name: String::from("Iron Ingot"),
             alternate: false,
             ficsmas: false,
-            inputs: vec![RecipeIO::new(Item::IronOre, 1.0, 15.0)],
-            outputs: vec![RecipeIO::new(Item::IronIngot, 1.0, 15.0)],
-            craft_time: 4,
+            inputs: vec![ItemValuePair::new(Item::IronOre, 15.0)],
+            outputs: vec![ItemValuePair::new(Item::IronIngot, 15.0)],
             power_multiplier: 1.0,
             machine: Machine::Smelter,
         };
@@ -488,11 +433,10 @@ mod tests {
             alternate: false,
             ficsmas: false,
             inputs: vec![
-                RecipeIO::new(Item::CopperPowder, 200.0, 100.0),
-                RecipeIO::new(Item::PressureConversionCube, 1.0, 0.5),
+                ItemValuePair::new(Item::CopperPowder, 100.0),
+                ItemValuePair::new(Item::PressureConversionCube, 0.5),
             ],
-            outputs: vec![RecipeIO::new(Item::NuclearPasta, 1.0, 0.5)],
-            craft_time: 120,
+            outputs: vec![ItemValuePair::new(Item::NuclearPasta, 0.5)],
             power_multiplier: 2.0,
             machine: Machine::ParticleAccelerator,
         };
@@ -506,9 +450,8 @@ mod tests {
             name: String::from("Iron Ingot"),
             alternate: false,
             ficsmas: false,
-            inputs: vec![RecipeIO::new(Item::IronOre, 1.0, 15.0)],
-            outputs: vec![RecipeIO::new(Item::IronIngot, 1.0, 15.0)],
-            craft_time: 4,
+            inputs: vec![ItemValuePair::new(Item::IronOre, 15.0)],
+            outputs: vec![ItemValuePair::new(Item::IronIngot, 15.0)],
             power_multiplier: 1.0,
             machine: Machine::Smelter,
         };
@@ -523,11 +466,10 @@ mod tests {
             alternate: false,
             ficsmas: false,
             inputs: vec![
-                RecipeIO::new(Item::CopperPowder, 200.0, 100.0),
-                RecipeIO::new(Item::PressureConversionCube, 1.0, 0.5),
+                ItemValuePair::new(Item::CopperPowder, 100.0),
+                ItemValuePair::new(Item::PressureConversionCube, 0.5),
             ],
-            outputs: vec![RecipeIO::new(Item::NuclearPasta, 1.0, 0.5)],
-            craft_time: 120,
+            outputs: vec![ItemValuePair::new(Item::NuclearPasta, 0.5)],
             power_multiplier: 2.0,
             machine: Machine::ParticleAccelerator,
         };
@@ -542,11 +484,10 @@ mod tests {
             alternate: false,
             ficsmas: false,
             inputs: vec![
-                RecipeIO::new(Item::NonFissileUranium, 100.0, 100.0),
-                RecipeIO::new(Item::UraniumWaste, 25.0, 25.0),
+                ItemValuePair::new(Item::NonFissileUranium, 100.0),
+                ItemValuePair::new(Item::UraniumWaste, 25.0),
             ],
-            outputs: vec![RecipeIO::new(Item::PlutoniumPellet, 30.0, 30.0)],
-            craft_time: 60,
+            outputs: vec![ItemValuePair::new(Item::PlutoniumPellet, 30.0)],
             power_multiplier: 1.0,
             machine: Machine::ParticleAccelerator,
         };
@@ -561,11 +502,10 @@ mod tests {
             alternate: false,
             ficsmas: false,
             inputs: vec![
-                RecipeIO::new(Item::CopperPowder, 200.0, 100.0),
-                RecipeIO::new(Item::PressureConversionCube, 1.0, 0.5),
+                ItemValuePair::new(Item::CopperPowder, 100.0),
+                ItemValuePair::new(Item::PressureConversionCube, 0.5),
             ],
-            outputs: vec![RecipeIO::new(Item::NuclearPasta, 1.0, 0.5)],
-            craft_time: 120,
+            outputs: vec![ItemValuePair::new(Item::NuclearPasta, 0.5)],
             power_multiplier: 2.0,
             machine: Machine::ParticleAccelerator,
         };
@@ -579,9 +519,8 @@ mod tests {
             name: String::from("Iron Ingot"),
             alternate: false,
             ficsmas: false,
-            inputs: vec![RecipeIO::new(Item::IronOre, 1.0, 15.0)],
-            outputs: vec![RecipeIO::new(Item::IronIngot, 1.0, 15.0)],
-            craft_time: 4,
+            inputs: vec![ItemValuePair::new(Item::IronOre, 15.0)],
+            outputs: vec![ItemValuePair::new(Item::IronIngot, 15.0)],
             power_multiplier: 1.0,
             machine: Machine::Smelter,
         };

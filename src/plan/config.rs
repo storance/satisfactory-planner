@@ -246,7 +246,7 @@ impl PlanConfig {
 
 #[cfg(test)]
 mod test {
-    use crate::game::{Machine, RecipeIO};
+    use crate::game::Machine;
 
     use super::*;
 
@@ -352,10 +352,9 @@ mod test {
             name: "Copper Ingot".into(),
             alternate: false,
             ficsmas: false,
-            inputs: vec![RecipeIO::new(Item::CopperOre, 1.0, 30.0)],
-            outputs: vec![RecipeIO::new(Item::CopperIngot, 1.0, 30.0)],
+            inputs: vec![ItemValuePair::new(Item::CopperOre, 30.0)],
+            outputs: vec![ItemValuePair::new(Item::CopperIngot, 30.0)],
             power_multiplier: 1.0,
-            craft_time: 2,
             machine: Machine::Smelter,
         }
     }
@@ -365,10 +364,9 @@ mod test {
             name: "Actual Snow".into(),
             alternate: false,
             ficsmas: true,
-            inputs: vec![RecipeIO::new(Item::FicsmasGift, 5.0, 25.0)],
-            outputs: vec![RecipeIO::new(Item::ActualSnow, 2.0, 10.0)],
+            inputs: vec![ItemValuePair::new(Item::FicsmasGift, 25.0)],
+            outputs: vec![ItemValuePair::new(Item::ActualSnow, 10.0)],
             power_multiplier: 1.0,
-            craft_time: 12,
             machine: Machine::Constructor,
         }
     }
@@ -379,12 +377,11 @@ mod test {
             alternate: true,
             ficsmas: false,
             inputs: vec![
-                RecipeIO::new(Item::IronOre, 7.0, 35.0),
-                RecipeIO::new(Item::Water, 5.0, 20.0),
+                ItemValuePair::new(Item::IronOre, 35.0),
+                ItemValuePair::new(Item::Water, 20.0),
             ],
-            outputs: vec![RecipeIO::new(Item::IronIngot, 13.0, 65.0)],
+            outputs: vec![ItemValuePair::new(Item::IronIngot, 65.0)],
             power_multiplier: 1.0,
-            craft_time: 12,
             machine: Machine::Refinery,
         }
     }
