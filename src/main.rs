@@ -1,3 +1,5 @@
+extern crate anyhow;
+extern crate indexmap;
 extern crate petgraph;
 extern crate serde;
 extern crate serde_yaml;
@@ -5,10 +7,11 @@ extern crate thiserror;
 
 use crate::game::{Item, Machine, Recipe};
 use crate::plan::{solve, PlanConfig};
-use petgraph::dot::Dot;
+use plan::print_graph;
 
 mod game;
 mod plan;
+mod utils;
 
 fn main() {
     let recipes = Recipe::load_from_file("recipes.yml").unwrap_or_else(|e| {
@@ -23,7 +26,7 @@ fn main() {
         panic!("Failed to solve plan: {}", e);
     });
 
-    println!("{}", Dot::new(&graph));
+    print_graph(&graph);
 }
 
 pub fn print_item(item: Item) {

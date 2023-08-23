@@ -4,7 +4,7 @@ use std::fmt;
 
 item_definition!(
     Item {
-        // Ore
+        // Extractable
         IronOre(name: "Iron Ore", extractable, sink_points: 1),
         CopperOre(name: "Copper Ore", extractable, sink_points: 3),
         Coal(name: "Coal", extractable, sink_points: 3),
@@ -15,6 +15,9 @@ item_definition!(
         Uranium(name: "Uranium", extractable, sink_points: 35),
         SAMOre(name: "SAM Ore", extractable),
         Sulfur(name: "Sulfur", extractable, sink_points: 11),
+        Water(name: "Water", extractable, fluid),
+        CrudeOil(name: "Crude Oil", extractable, fluid),
+        NitrogenGas(name: "Nitrogen Gas", extractable, fluid),
 
         // Other Resources
         Leaves(name: "Leaves", sink_points: 3),
@@ -66,6 +69,9 @@ item_definition!(
         Rubber(name: "Rubber", sink_points: 60),
         PolymerResin(name: "Polymer Resin", sink_points: 12),
         Fabric(name: "Fabric", sink_points: 140),
+        LiquidBiofuel(name: "Liquid Biofuel", fluid),
+        HeavyOilResidue(name: "Heavy Oil Residue", fluid),
+        Fuel(name: "Fuel", fluid),
 
         // Phase 3
         AluminumScrap(name: "Aluminum Scrap", sink_points: 27),
@@ -89,6 +95,9 @@ item_definition!(
         PlutoniumFuelRod(name: "Plutonium Fuel Rod", sink_points: 153184),
         UraniumWaste(name: "Uranium Waste"),
         PlutoniumWaste(name: "Plutonium Waste"),
+        AluminaSolution(name: "Alumina Solution", fluid),
+        SulfuricAcid(name: "Sulfuric Acid", fluid),
+        NitricAcid(name: "Nitric Acid", fluid),
 
         // MAM Research
         PowerShard(name: "Power Shard"),
@@ -105,6 +114,7 @@ item_definition!(
         AILimiter(name: "AI Limiter", sink_points: 920),
         HighSpeedConnector(name: "High-Speed Connector", sink_points: 3776),
         Supercomputer(name: "Supercomputer", sink_points: 99576),
+        Turbofuel(name: "Turbofuel", fluid),
 
         // Packaged Liquids
         EmptyFluidTank(name: "Empty Fluid Tank", sink_points: 225),
@@ -148,18 +158,6 @@ item_definition!(
         AssemblyDirectorSystem(name: "Assembly Director System", sink_points: 543632),
         MagneticFieldGenerator(name: "Magnetic Field Generator", sink_points: 15650),
         ThermalPropulsionRocket(name: "Thermal Propulsion Rocket", sink_points: 732956),
-        NuclearPasta(name: "Nuclear Pasta", sink_points: 543424),
-
-        // Fluids
-        Water(name: "Water", extractable, fluid),
-        CrudeOil(name: "Crude Oil", extractable, fluid),
-        NitrogenGas(name: "Nitrogen Gas", extractable, fluid),
-        LiquidBiofuel(name: "Liquid Biofuel", fluid),
-        HeavyOilResidue(name: "Heavy Oil Residue", fluid),
-        Fuel(name: "Fuel", fluid),
-        Turbofuel(name: "Turbofuel", fluid),
-        AluminaSolution(name: "Alumina Solution", fluid),
-        SulfuricAcid(name: "Sulfuric Acid", fluid),
-        NitricAcid(name: "Nitric Acid", fluid)
+        NuclearPasta(name: "Nuclear Pasta", sink_points: 543424)
     }
 );
