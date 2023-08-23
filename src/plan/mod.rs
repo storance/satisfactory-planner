@@ -1,4 +1,3 @@
-use std::io;
 use thiserror::Error;
 
 mod config;
@@ -10,16 +9,12 @@ pub use config::*;
 pub use graph::*;
 pub use solver::*;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Eq, PartialEq)]
 pub enum PlanError {
     #[error("No recipe exists with the name `{0}`")]
     InvalidRecipe(String),
     #[error("The raw resource `{0}` is not allowed in outputs.")]
-    UnexpectedRawOutputItem(Item),
-    #[error(transparent)]
-    IOError(#[from] io::Error),
-    #[error(transparent)]
-    SerdeError(#[from] serde_yaml::Error),
+    UnexpectedRawOutputItem(Item)
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]

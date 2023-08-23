@@ -7,7 +7,7 @@ extern crate thiserror;
 
 use crate::game::{Item, Machine, Recipe};
 use crate::plan::{solve, PlanConfig};
-use petgraph::dot::Dot;
+use plan::print_graph;
 
 mod game;
 mod plan;
@@ -26,19 +26,7 @@ fn main() {
         panic!("Failed to solve plan: {}", e);
     });
 
-    println!("{}", format!("{}", Dot::with_attr_getters(&graph,
-        &[],
-        &|_, _| String::new(),
-        &|_, n| {
-            let color = match n.1 {
-                plan::NodeValue::Input(input) => if input.item.is_extractable() { "lightslategray"} else { "peru" },
-                plan::NodeValue::Output(..) => "mediumseagreen",
-                plan::NodeValue::ByProduct(..) => "cornflowerblue",
-                plan::NodeValue::Production(..) => "darkorange"
-            };
-
-            format!("style=\"solid,filled\" shape=\"box\" fontcolor=\"white\" color=\"{}\"", color)
-        })).replace("\\l", "\\n"));
+    print_graph(&graph);
 }
 
 pub fn print_item(item: Item) {

@@ -52,7 +52,7 @@ recipes:
       - Copper Ore: 6
       - Water: 4
     outputs:
-      - Iron Ingot: 15
+      - Copper Ingot: 15
     craft_time: 24
     machine: Refinery
   # Biomass

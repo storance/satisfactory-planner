@@ -19,7 +19,7 @@ struct RecipeDefinition {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct RecipesDefinition {
+struct RecipesRoot {
     pub recipes: Vec<RecipeDefinition>,
 }
 
@@ -66,12 +66,12 @@ const fn default_power_multiplier() -> f32 {
 impl Recipe {
     pub fn load_from_file(file_path: &str) -> anyhow::Result<Vec<Recipe>> {
         let file = File::open(file_path)?;
-        let config: RecipesDefinition = serde_yaml::from_reader(file)?;
+        let config: RecipesRoot = serde_yaml::from_reader(file)?;
 
         Ok(Self::convert(config)?)
     }
 
-    fn convert(config: RecipesDefinition) -> Result<Vec<Recipe>, RecipeError> {
+    fn convert(config: RecipesRoot) -> Result<Vec<Recipe>, RecipeError> {
         let mut converted_recipes: Vec<Recipe> = Vec::with_capacity(config.recipes.len());
         for recipe in config.recipes {
             Self::check_for_duplicate_io(&recipe.inputs, |item| {
@@ -166,6 +166,7 @@ impl Recipe {
         self.outputs.iter().any(|output| output.item == item)
     }
 
+    #[allow(dead_code)]
     pub fn has_input_item(&self, item: Item) -> bool {
         self.inputs.iter().any(|input| input.item == item)
     }
@@ -269,7 +270,7 @@ mod tests {
             machine: Machine::Smelter,
         };
 
-        let result = Recipe::convert(RecipesDefinition {
+        let result = Recipe::convert(RecipesRoot {
             recipes: vec![recipe_def],
         });
 
@@ -303,7 +304,7 @@ mod tests {
             machine: Machine::Manufacturer,
         };
 
-        let result = Recipe::convert(RecipesDefinition {
+        let result = Recipe::convert(RecipesRoot {
             recipes: vec![recipe_def],
         });
 
@@ -335,7 +336,7 @@ mod tests {
             machine: Machine::Blender,
         };
 
-        let result = Recipe::convert(RecipesDefinition {
+        let result = Recipe::convert(RecipesRoot {
             recipes: vec![recipe_def],
         });
 
@@ -360,7 +361,7 @@ mod tests {
             machine: Machine::Smelter,
         };
 
-        let result = Recipe::convert(RecipesDefinition {
+        let result = Recipe::convert(RecipesRoot {
             recipes: vec![recipe_def],
         });
 
@@ -379,7 +380,7 @@ mod tests {
             machine: Machine::Smelter,
         };
 
-        let result = Recipe::convert(RecipesDefinition {
+        let result = Recipe::convert(RecipesRoot {
             recipes: vec![recipe_def],
         });
 
@@ -405,7 +406,7 @@ mod tests {
             machine: Machine::Blender,
         };
 
-        let result = Recipe::convert(RecipesDefinition {
+        let result = Recipe::convert(RecipesRoot {
             recipes: vec![recipe_def],
         });
 
@@ -438,7 +439,7 @@ mod tests {
             machine: Machine::Blender,
         };
 
-        let result = Recipe::convert(RecipesDefinition {
+        let result = Recipe::convert(RecipesRoot {
             recipes: vec![recipe_def],
         });
 

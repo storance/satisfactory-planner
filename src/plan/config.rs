@@ -5,10 +5,10 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 
-use crate::game::{Item, Recipe};
+use crate::game::{Item, ItemValuePair, Recipe};
 use crate::plan::PlanError;
 
-static DEFAULT_LIMITS: [(Item, f64); 13] = [
+pub static DEFAULT_LIMITS: [(Item, f64); 13] = [
     (Item::Bauxite, 9780.0),
     (Item::CateriumOre, 12040.0),
     (Item::Coal, 30900.0),
@@ -148,15 +148,40 @@ struct PlanConfigDefinition {
 #[derive(Debug, Clone)]
 pub struct PlanConfig {
     pub inputs: HashMap<Item, f64>,
-    pub outputs: IndexMap<Item, f64>,
+    pub outputs: Vec<ItemValuePair>,
     pub recipes: Vec<Recipe>,
 }
 
+#[allow(dead_code)]
 impl PlanConfig {
-    pub fn from_file(file_path: &str, all_recipes: &[Recipe]) -> Result<PlanConfig, PlanError> {
+    pub fn new(outputs: Vec<ItemValuePair>, recipes: Vec<Recipe>) -> Self {
+        PlanConfig {
+            inputs: DEFAULT_LIMITS.iter().copied().collect(),
+            outputs,
+            recipes,
+        }
+    }
+
+    pub fn with_inputs(
+        inputs: HashMap<Item, f64>,
+        outputs: Vec<ItemValuePair>,
+        recipes: Vec<Recipe>,
+    ) -> Self {
+        PlanConfig {
+            inputs: DEFAULT_LIMITS.iter().copied().chain(inputs).collect(),
+            outputs,
+            recipes,
+        }
+    }
+
+    pub fn from_file(file_path: &str, all_recipes: &[Recipe]) -> anyhow::Result<Self> {
         let file = File::open(file_path)?;
         let config: PlanConfigDefinition = serde_yaml::from_reader(file)?;
 
+        Ok(Self::convert(config, all_recipes)?)
+    }
+
+    fn convert(config: PlanConfigDefinition, all_recipes: &[Recipe]) -> Result<Self, PlanError> {
         let mut inputs: HashMap<Item, f64> = DEFAULT_LIMITS.iter().copied().collect();
         inputs.extend(config.inputs);
 
@@ -184,7 +209,11 @@ impl PlanConfig {
 
         Ok(PlanConfig {
             inputs,
-            outputs: config.outputs,
+            outputs: config
+                .outputs
+                .iter()
+                .map(|(item, value)| ItemValuePair::new(*item, *value))
+                .collect(),
             recipes,
         })
     }

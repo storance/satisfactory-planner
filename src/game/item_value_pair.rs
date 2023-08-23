@@ -3,7 +3,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::fmt::Debug;
-use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Sub, SubAssign, DivAssign};
 
 use crate::game::Item;
 
@@ -20,16 +20,29 @@ impl ItemValuePair {
             value: f64::max(0.0, value),
         }
     }
+
+    pub fn with_value(&self, new_value: f64) -> Self {
+        Self {
+            item: self.item,
+            value: f64::max(0.0, new_value)
+        }
+    }
 }
 
 impl Add<f64> for ItemValuePair {
     type Output = Self;
 
     fn add(self, rhs: f64) -> Self::Output {
-        Self {
-            item: self.item,
-            value: self.value + rhs,
-        }
+        self.with_value(self.value + rhs)
+    }
+}
+
+impl Add<ItemValuePair> for ItemValuePair {
+    type Output = Self;
+
+    fn add(self, rhs: ItemValuePair) -> Self::Output {
+        assert!(self.item == rhs.item);
+        self.with_value(self.value + rhs.value)
     }
 }
 
@@ -43,10 +56,16 @@ impl Sub<f64> for ItemValuePair {
     type Output = Self;
 
     fn sub(self, rhs: f64) -> Self::Output {
-        Self {
-            item: self.item,
-            value: self.value - rhs,
-        }
+        self.with_value(self.value - rhs)
+    }
+}
+
+impl Sub<ItemValuePair> for ItemValuePair {
+    type Output = Self;
+
+    fn sub(self, rhs: ItemValuePair) -> Self::Output {
+        assert!(self.item == rhs.item);
+        self.with_value(self.value - rhs.value)
     }
 }
 
@@ -60,10 +79,13 @@ impl Mul<f64> for ItemValuePair {
     type Output = Self;
 
     fn mul(self, rhs: f64) -> Self::Output {
-        Self {
-            item: self.item,
-            value: self.value * rhs,
-        }
+        self.with_value(self.value * rhs)
+    }
+}
+
+impl MulAssign<f64> for ItemValuePair {
+    fn mul_assign(&mut self, rhs: f64) {
+        self.value *= rhs;
     }
 }
 
@@ -71,16 +93,13 @@ impl Div<f64> for ItemValuePair {
     type Output = Self;
 
     fn div(self, rhs: f64) -> Self::Output {
-        Self {
-            item: self.item,
-            value: self.value / rhs,
-        }
+        self.with_value(self.value / rhs)
     }
 }
 
-impl MulAssign<f64> for ItemValuePair {
-    fn mul_assign(&mut self, rhs: f64) {
-        self.value *= rhs;
+impl DivAssign<f64> for ItemValuePair {
+    fn div_assign(&mut self, rhs: f64) {
+        self.value /= rhs;
     }
 }
 

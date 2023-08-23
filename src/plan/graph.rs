@@ -1,5 +1,5 @@
-use petgraph::graph::NodeIndex;
 use petgraph::stable_graph::StableDiGraph;
+use petgraph::{dot::Dot, graph::NodeIndex};
 
 use crate::{
     game::{Item, ItemValuePair, Recipe},
@@ -7,13 +7,13 @@ use crate::{
 };
 use std::fmt;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Production<'a> {
     pub recipe: &'a Recipe,
     pub machine_count: f64,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum NodeValue<'a> {
     Input(ItemValuePair),
     Output(ItemValuePair),
@@ -21,7 +21,7 @@ pub enum NodeValue<'a> {
     Production(Production<'a>),
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct NodeEdge {
     pub value: ItemValuePair,
     pub order: u32,
@@ -36,6 +36,7 @@ pub struct ScoredNodeValue<'a> {
 pub type GraphType<'a> = StableDiGraph<NodeValue<'a>, NodeEdge>;
 pub type ScoredGraphType<'a> = StableDiGraph<ScoredNodeValue<'a>, ItemValuePair>;
 
+#[allow(dead_code)]
 impl<'a> NodeValue<'a> {
     pub fn new_input(input: ItemValuePair) -> Self {
         NodeValue::Input(input)
@@ -60,17 +61,14 @@ impl<'a> NodeValue<'a> {
         matches!(self, NodeValue::Input(..))
     }
 
-    #[allow(dead_code)]
     pub fn is_output(&self) -> bool {
         matches!(self, NodeValue::Output(..))
     }
 
-    #[allow(dead_code)]
     pub fn is_by_product(&self) -> bool {
         matches!(self, NodeValue::ByProduct(..))
     }
 
-    #[allow(dead_code)]
     pub fn is_production(&self) -> bool {
         matches!(self, NodeValue::Production(..))
     }
@@ -78,36 +76,56 @@ impl<'a> NodeValue<'a> {
     pub fn as_input(&self) -> &ItemValuePair {
         match self {
             NodeValue::Input(input) => input,
-            _ => panic!("NodeValue is not an Input"),
+            _ => panic!("NodeValue is not Input"),
         }
     }
 
     pub fn as_input_mut(&mut self) -> &mut ItemValuePair {
         match self {
             NodeValue::Input(input) => input,
-            _ => panic!("NodeValue is not an Input"),
+            _ => panic!("NodeValue is not Input"),
+        }
+    }
+
+    pub fn as_output(&self) -> &ItemValuePair {
+        match self {
+            NodeValue::Output(output) => output,
+            _ => panic!("NodeValue is not Output"),
         }
     }
 
     pub fn as_output_mut(&mut self) -> &mut ItemValuePair {
         match self {
             NodeValue::Output(output) => output,
-            _ => panic!("NodeValue is not an Output"),
+            _ => panic!("NodeValue is not Output"),
         }
     }
 
-    #[allow(dead_code)]
+    pub fn as_by_product(&self) -> &ItemValuePair {
+        match self {
+            NodeValue::ByProduct(output) => output,
+            _ => panic!("NodeValue is not ByProduct"),
+        }
+    }
+
     pub fn as_by_product_mut(&mut self) -> &mut ItemValuePair {
         match self {
             NodeValue::ByProduct(output) => output,
-            _ => panic!("NodeValue is not an ByProduct"),
+            _ => panic!("NodeValue is not ByProduct"),
+        }
+    }
+
+    pub fn as_production(&self) -> &Production<'a> {
+        match self {
+            NodeValue::Production(production) => production,
+            _ => panic!("NodeValue is not Production"),
         }
     }
 
     pub fn as_production_mut(&mut self) -> &mut Production<'a> {
         match self {
             NodeValue::Production(production) => production,
-            _ => panic!("NodeValue is not an Production"),
+            _ => panic!("NodeValue is not Production"),
         }
     }
 }
@@ -152,6 +170,7 @@ impl<'a> fmt::Display for NodeValue<'a> {
     }
 }
 
+#[allow(dead_code)]
 impl<'a> ScoredNodeValue<'a> {
     pub fn new_input(input: ItemValuePair) -> Self {
         Self::from(NodeValue::new_input(input))
@@ -160,8 +179,6 @@ impl<'a> ScoredNodeValue<'a> {
     pub fn new_output(output: ItemValuePair) -> Self {
         Self::from(NodeValue::new_output(output))
     }
-
-    #[allow(dead_code)]
     pub fn new_by_product(output: ItemValuePair) -> Self {
         Self::from(NodeValue::new_by_product(output))
     }
@@ -170,19 +187,20 @@ impl<'a> ScoredNodeValue<'a> {
         Self::from(NodeValue::new_production(recipe, machine_count))
     }
 
-    #[allow(dead_code)]
     pub fn is_input(&self) -> bool {
         self.node.is_input()
     }
 
-    #[allow(dead_code)]
     pub fn is_output(&self) -> bool {
         self.node.is_output()
     }
 
-    #[allow(dead_code)]
     pub fn is_production(&self) -> bool {
         self.node.is_production()
+    }
+
+    pub fn is_by_product(&self) -> bool {
+        self.node.is_by_product()
     }
 }
 
@@ -245,9 +263,69 @@ pub fn find_output_node(graph: &GraphType<'_>, item: Item) -> Option<NodeIndex> 
     })
 }
 
+#[allow(dead_code)]
 pub fn find_by_product_node(graph: &GraphType<'_>, item: Item) -> Option<NodeIndex> {
     graph.node_indices().find(|i| match graph[*i] {
         NodeValue::ByProduct(output) => item == output.item,
         _ => false,
     })
+}
+
+pub fn print_graph(graph: &GraphType) {
+    println!(
+        "{}",
+        format!(
+            "{}",
+            Dot::with_attr_getters(&graph, &[], &|_, _| String::new(), &|_, n| {
+                let color = match n.1 {
+                    NodeValue::Input(input) => {
+                        if input.item.is_extractable() {
+                            "lightslategray"
+                        } else {
+                            "peru"
+                        }
+                    }
+                    NodeValue::Output(..) => "mediumseagreen",
+                    NodeValue::ByProduct(..) => "cornflowerblue",
+                    NodeValue::Production(..) => "darkorange",
+                };
+
+                format!(
+                    "style=\"solid,filled\" shape=\"box\" fontcolor=\"white\" color=\"{}\"",
+                    color
+                )
+            })
+        )
+        .replace("\\l", "\\n")
+    );
+}
+
+#[allow(dead_code)]
+pub fn print_scored_graph(graph: &ScoredGraphType) {
+    println!(
+        "{}",
+        format!(
+            "{}",
+            Dot::with_attr_getters(&graph, &[], &|_, _| String::new(), &|_, n| {
+                let color = match n.1.node {
+                    NodeValue::Input(input) => {
+                        if input.item.is_extractable() {
+                            "lightslategray"
+                        } else {
+                            "peru"
+                        }
+                    }
+                    NodeValue::Output(..) => "mediumseagreen",
+                    NodeValue::ByProduct(..) => "cornflowerblue",
+                    NodeValue::Production(..) => "darkorange",
+                };
+
+                format!(
+                    "style=\"solid,filled\" shape=\"box\" fontcolor=\"white\" color=\"{}\"",
+                    color
+                )
+            })
+        )
+        .replace("\\l", "\\n")
+    );
 }
