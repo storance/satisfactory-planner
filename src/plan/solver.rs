@@ -989,7 +989,7 @@ mod tests {
         );
 
         let result = solve(&config);
-        
+
         assert!(result.is_ok(), "{:?}", result);
         assert_graphs_equal(result.unwrap(), expected_graph);
     }
@@ -1134,9 +1134,13 @@ mod tests {
 
             let actual_edge = actual
                 .find_edge(*actual_child, *actual_parent)
-                .unwrap_or_else(|| panic!("Edge connecting {} to {} was not found in actual graph",
-                    format_node(&expected[edge.source()]),
-                    format_node(&expected[edge.target()])));
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Edge connecting {} to {} was not found in actual graph",
+                        format_node(&expected[edge.source()]),
+                        format_node(&expected[edge.target()])
+                    )
+                });
 
             assert!(
                 item_value_pair_equals(&actual[actual_edge].value, &edge.weight().value),

@@ -14,7 +14,7 @@ pub enum PlanError {
     #[error("No recipe exists with the name `{0}`")]
     InvalidRecipe(String),
     #[error("The raw resource `{0}` is not allowed in outputs.")]
-    UnexpectedRawOutputItem(Item)
+    UnexpectedRawOutputItem(Item),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -63,12 +63,10 @@ impl ItemBitSet {
     }
 }
 
-
-
 #[cfg(test)]
 mod test {
     use super::*;
-        
+
     #[test]
     fn test_union() {
         let a = construct_bit_set(&[Item::IronOre, Item::CopperOre, Item::CateriumOre]);
@@ -76,7 +74,16 @@ mod test {
 
         let merged = a.union(&b);
         assert_eq!(merged.len(), 5);
-        assert_eq!(merged, construct_bit_set(&[Item::IronOre, Item::CopperOre, Item::CateriumOre, Item::Water, Item::CrudeOil]))
+        assert_eq!(
+            merged,
+            construct_bit_set(&[
+                Item::IronOre,
+                Item::CopperOre,
+                Item::CateriumOre,
+                Item::Water,
+                Item::CrudeOil
+            ])
+        )
     }
 
     #[test]

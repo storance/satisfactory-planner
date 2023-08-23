@@ -3,7 +3,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::fmt::Debug;
-use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Sub, SubAssign, DivAssign};
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
 use crate::game::Item;
 
@@ -24,7 +24,7 @@ impl ItemValuePair {
     pub fn with_value(&self, new_value: f64) -> Self {
         Self {
             item: self.item,
-            value: f64::max(0.0, new_value)
+            value: f64::max(0.0, new_value),
         }
     }
 }
@@ -162,15 +162,16 @@ mod test {
         let yaml = "Iron Ore: 32.5";
 
         let result: Result<ItemValuePair, serde_yaml::Error> = serde_yaml::from_str(yaml);
-        
+
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), ItemValuePair::new(Item::IronOre, 32.5));
     }
 
     #[test]
     fn item_value_pair_serialize() {
-        let result: Result<String, serde_yaml::Error> = serde_yaml::to_string(&ItemValuePair::new(Item::IronOre, 32.5));
-        
+        let result: Result<String, serde_yaml::Error> =
+            serde_yaml::to_string(&ItemValuePair::new(Item::IronOre, 32.5));
+
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Iron Ore: 32.5\n");
     }

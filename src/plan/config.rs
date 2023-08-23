@@ -241,7 +241,7 @@ impl PlanConfig {
 
 #[cfg(test)]
 mod test {
-    use crate::game::{RecipeIO, Machine};
+    use crate::game::{Machine, RecipeIO};
 
     use super::*;
 
@@ -257,16 +257,19 @@ mod test {
         #";
 
         let result: Result<Vec<RecipeMatcher>, serde_yaml::Error> = serde_yaml::from_str(yaml);
-        
+
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), vec![
-            RecipeMatcher::IncludeByAlternate(false),
-            RecipeMatcher::IncludeByAlternate(true),
-            RecipeMatcher::IncludeByAlternate(true),
-            RecipeMatcher::IncludeByName("Pure Iron Ingot".into()),
-            RecipeMatcher::ExcludeByName("Iron Alloy Ingot".into()),
-            RecipeMatcher::IncludeByOutputItem(Item::CopperIngot),
-        ]);
+        assert_eq!(
+            result.unwrap(),
+            vec![
+                RecipeMatcher::IncludeByAlternate(false),
+                RecipeMatcher::IncludeByAlternate(true),
+                RecipeMatcher::IncludeByAlternate(true),
+                RecipeMatcher::IncludeByName("Pure Iron Ingot".into()),
+                RecipeMatcher::ExcludeByName("Iron Alloy Ingot".into()),
+                RecipeMatcher::IncludeByOutputItem(Item::CopperIngot),
+            ]
+        );
     }
 
     #[test]
@@ -324,7 +327,6 @@ mod test {
     }
 
     fn get_copper_ingot_recipe() -> Recipe {
-        
         Recipe {
             name: "Copper Ingot".into(),
             alternate: false,
@@ -337,7 +339,6 @@ mod test {
     }
 
     fn get_pure_iron_ingot_recipe() -> Recipe {
-        
         Recipe {
             name: "Pure Iron Ingot".into(),
             alternate: true,
