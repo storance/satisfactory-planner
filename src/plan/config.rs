@@ -24,7 +24,7 @@ pub static DEFAULT_LIMITS: [(Item, f64); 13] = [
     (Item::SAMOre, 0.0),
 ];
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 enum RecipeMatcher {
     IncludeByAlternate(bool),
     IncludeByName(String),
@@ -120,11 +120,11 @@ impl<'de> Visitor<'de> for RecipeMatcherVisitor {
     where
         M: MapAccess<'de>,
     {
-        if let Some(field) = map.next_key::<&str>()? {
+        if let Some(field) = map.next_key::<String>()? {
             if field.eq_ignore_ascii_case("exclude") {
-                Ok(RecipeMatcher::IncludeByOutputItem(map.next_value()?))
-            } else if field.eq_ignore_ascii_case("output") {
                 Ok(RecipeMatcher::ExcludeByName(map.next_value()?))
+            } else if field.eq_ignore_ascii_case("output") {
+                Ok(RecipeMatcher::IncludeByOutputItem(map.next_value()?))
             } else {
                 Err(serde::de::Error::custom(format!(
                     "Unknown recipe matcher {}",
@@ -236,5 +236,119 @@ impl PlanConfig {
 
     pub fn find_input(&self, item: Item) -> f64 {
         self.inputs.get(&item).copied().unwrap_or(0.0)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::game::{RecipeIO, Machine};
+
+    use super::*;
+
+    #[test]
+    fn recipe_matcher_deserialize() {
+        let yaml = "#
+            - base
+            - alts
+            - alternates
+            - Pure Iron Ingot
+            - exclude: Iron Alloy Ingot
+            - output: Copper Ingot
+        #";
+
+        let result: Result<Vec<RecipeMatcher>, serde_yaml::Error> = serde_yaml::from_str(yaml);
+        
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), vec![
+            RecipeMatcher::IncludeByAlternate(false),
+            RecipeMatcher::IncludeByAlternate(true),
+            RecipeMatcher::IncludeByAlternate(true),
+            RecipeMatcher::IncludeByName("Pure Iron Ingot".into()),
+            RecipeMatcher::ExcludeByName("Iron Alloy Ingot".into()),
+            RecipeMatcher::IncludeByOutputItem(Item::CopperIngot),
+        ]);
+    }
+
+    #[test]
+    fn recipe_matcher_include_by_alternate_false_matches() {
+        let base_matcher = RecipeMatcher::IncludeByAlternate(false);
+        let pure_iron_ingot = get_pure_iron_ingot_recipe();
+        let copper_ingot = get_copper_ingot_recipe();
+
+        assert!(!base_matcher.matches(&pure_iron_ingot));
+        assert!(base_matcher.matches(&copper_ingot));
+    }
+
+    #[test]
+    fn recipe_matcher_include_by_alternate_true_matches() {
+        let alts_matcher = RecipeMatcher::IncludeByAlternate(true);
+        let pure_iron_ingot = get_pure_iron_ingot_recipe();
+        let copper_ingot = get_copper_ingot_recipe();
+
+        assert!(alts_matcher.matches(&pure_iron_ingot));
+        assert!(!alts_matcher.matches(&copper_ingot));
+    }
+
+    #[test]
+    fn recipe_matcher_include_by_name_matches() {
+        let name_matcher = RecipeMatcher::IncludeByName("Pure Iron Ingot".into());
+        let name_lc_matcher = RecipeMatcher::IncludeByName("pure iron ingot".into());
+        let pure_iron_ingot = get_pure_iron_ingot_recipe();
+        let copper_ingot = get_copper_ingot_recipe();
+
+        assert!(name_matcher.matches(&pure_iron_ingot));
+        assert!(!name_matcher.matches(&copper_ingot));
+
+        assert!(name_lc_matcher.matches(&pure_iron_ingot));
+        assert!(!name_lc_matcher.matches(&copper_ingot));
+    }
+
+    #[test]
+    fn recipe_matcher_exclude_by_name_matches() {
+        let exclude_name_matcher = RecipeMatcher::ExcludeByName("Copper Ingot".into());
+        let pure_iron_ingot = get_pure_iron_ingot_recipe();
+        let copper_ingot = get_copper_ingot_recipe();
+
+        assert!(!exclude_name_matcher.matches(&pure_iron_ingot));
+        assert!(exclude_name_matcher.matches(&copper_ingot));
+    }
+
+    #[test]
+    fn recipe_matcher_include_by_output_item_matches() {
+        let output_item_matcher = RecipeMatcher::IncludeByOutputItem(Item::CopperIngot);
+        let pure_iron_ingot = get_pure_iron_ingot_recipe();
+        let copper_ingot = get_copper_ingot_recipe();
+
+        assert!(!output_item_matcher.matches(&pure_iron_ingot));
+        assert!(output_item_matcher.matches(&copper_ingot));
+    }
+
+    fn get_copper_ingot_recipe() -> Recipe {
+        let copper_ingot = Recipe {
+            name: "Copper Ingot".into(),
+            alternate: false,
+            inputs: vec![RecipeIO::new(Item::CopperOre, 1.0, 30.0)],
+            outputs: vec![RecipeIO::new(Item::CopperIngot, 1.0, 30.0)],
+            power_multiplier: 1.0,
+            craft_time: 2,
+            machine: Machine::Smelter,
+        };
+        copper_ingot
+    }
+
+    fn get_pure_iron_ingot_recipe() -> Recipe {
+        let pure_iron_ingot = Recipe {
+            name: "Pure Iron Ingot".into(),
+            alternate: true,
+            inputs: vec![
+                RecipeIO::new(Item::IronOre, 7.0, 35.0),
+                RecipeIO::new(Item::Water, 5.0, 20.0),
+            ],
+            outputs: vec![RecipeIO::new(Item::IronIngot, 13.0, 65.0)],
+            power_multiplier: 1.0,
+            craft_time: 12,
+            machine: Machine::Refinery,
+        };
+        pure_iron_ingot
     }
 }

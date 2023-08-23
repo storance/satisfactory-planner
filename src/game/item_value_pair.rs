@@ -152,3 +152,26 @@ impl<'de> Visitor<'de> for ItemValuePairVisitor {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn item_value_pair_deserialize() {
+        let yaml = "Iron Ore: 32.5";
+
+        let result: Result<ItemValuePair, serde_yaml::Error> = serde_yaml::from_str(yaml);
+        
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ItemValuePair::new(Item::IronOre, 32.5));
+    }
+
+    #[test]
+    fn item_value_pair_serialize() {
+        let result: Result<String, serde_yaml::Error> = serde_yaml::to_string(&ItemValuePair::new(Item::IronOre, 32.5));
+        
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Iron Ore: 32.5\n");
+    }
+}
