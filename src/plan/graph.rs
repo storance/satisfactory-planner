@@ -33,8 +33,14 @@ pub struct ScoredNodeValue<'a> {
     pub score: f64,
 }
 
+#[derive(Debug, Clone)]
+pub struct ScoredNodeEdge {
+    pub value: ItemValuePair,
+    pub path_ids: Vec<u32>,
+}
+
 pub type GraphType<'a> = StableDiGraph<NodeValue<'a>, NodeEdge>;
-pub type ScoredGraphType<'a> = StableDiGraph<ScoredNodeValue<'a>, ItemValuePair>;
+pub type ScoredGraphType<'a> = StableDiGraph<NodeValue<'a>, ItemValuePair>;
 
 #[allow(dead_code)]
 impl<'a> NodeValue<'a> {
@@ -220,7 +226,7 @@ impl<'a> From<NodeValue<'a>> for ScoredNodeValue<'a> {
     fn from(node: NodeValue<'a>) -> Self {
         Self {
             node,
-            score: f64::INFINITY,
+            score: f64::INFINITY
         }
     }
 }
@@ -242,21 +248,21 @@ impl fmt::Display for NodeEdge {
     }
 }
 
-pub fn find_input_node(graph: &GraphType<'_>, item: Item) -> Option<NodeIndex> {
+pub fn find_input_node<E>(graph: &StableDiGraph<NodeValue<'_>,  E>, item: Item) -> Option<NodeIndex> {
     graph.node_indices().find(|i| match graph[*i] {
         NodeValue::Input(input) => item == input.item,
         _ => false,
     })
 }
 
-pub fn find_production_node(graph: &GraphType<'_>, recipe: &Recipe) -> Option<NodeIndex> {
+pub fn find_production_node<E>(graph: &StableDiGraph<NodeValue<'_>,  E>, recipe: &Recipe) -> Option<NodeIndex> {
     graph.node_indices().find(|i| match graph[*i] {
         NodeValue::Production(production) => production.recipe == recipe,
         _ => false,
     })
 }
 
-pub fn find_output_node(graph: &GraphType<'_>, item: Item) -> Option<NodeIndex> {
+pub fn find_output_node<E>(graph: &StableDiGraph<NodeValue<'_>,  E>, item: Item) -> Option<NodeIndex> {
     graph.node_indices().find(|i| match graph[*i] {
         NodeValue::Output(output) => item == output.item,
         _ => false,
@@ -264,7 +270,7 @@ pub fn find_output_node(graph: &GraphType<'_>, item: Item) -> Option<NodeIndex> 
 }
 
 #[allow(dead_code)]
-pub fn find_by_product_node(graph: &GraphType<'_>, item: Item) -> Option<NodeIndex> {
+pub fn find_by_product_node<E>(graph: &StableDiGraph<NodeValue<'_>,  E>, item: Item) -> Option<NodeIndex> {
     graph.node_indices().find(|i| match graph[*i] {
         NodeValue::ByProduct(output) => item == output.item,
         _ => false,
@@ -307,7 +313,7 @@ pub fn print_scored_graph(graph: &ScoredGraphType) {
         format!(
             "{}",
             Dot::with_attr_getters(&graph, &[], &|_, _| String::new(), &|_, n| {
-                let color = match n.1.node {
+                let color = match n.1 {
                     NodeValue::Input(input) => {
                         if input.item.is_extractable() {
                             "lightslategray"

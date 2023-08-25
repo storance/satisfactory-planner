@@ -1,3 +1,7 @@
+by_product_blacklist:
+  - Empty Canister
+  - Empty Fluid Tank
+  - Water
 recipes:
   #
   # Tier 1 + 2

@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 
+use crate::game::recipe::RecipeDatabase;
 use crate::game::{Item, ItemValuePair, Recipe};
 use crate::plan::PlanError;
 
@@ -34,16 +35,6 @@ enum RecipeMatcher {
 }
 
 impl RecipeMatcher {
-    pub fn all_matching(&self, all_recipes: &[Recipe]) -> Result<Vec<Recipe>, PlanError> {
-        self.to_result(
-            all_recipes
-                .iter()
-                .cloned()
-                .filter(|recipe| self.matches(recipe))
-                .collect(),
-        )
-    }
-
     pub fn is_include(&self) -> bool {
         match self {
             Self::IncludeByAlternate(..) => true,
@@ -54,23 +45,23 @@ impl RecipeMatcher {
         }
     }
 
-    fn to_result(&self, result: Vec<Recipe>) -> Result<Vec<Recipe>, PlanError> {
+    pub fn validate(&self, all_recipes: &[Recipe]) -> Result<(), PlanError> {
         match self {
             Self::IncludeByName(name) => {
-                if result.is_empty() {
-                    Err(PlanError::InvalidRecipe(name.clone()))
+                if all_recipes.iter().any(|r| r.name.eq_ignore_ascii_case(name)) {
+                    Ok(())
                 } else {
-                    Ok(result)
+                    Err(PlanError::InvalidRecipe(name.clone()))
                 }
             }
             Self::ExcludeByName(name) => {
-                if result.is_empty() {
-                    Err(PlanError::InvalidRecipe(name.clone()))
+                if all_recipes.iter().any(|r| r.name.eq_ignore_ascii_case(name)) {
+                    Ok(())
                 } else {
-                    Ok(result)
+                    Err(PlanError::InvalidRecipe(name.clone()))
                 }
             }
-            _ => Ok(result),
+            _ => Ok(()),
         }
     }
 
@@ -154,12 +145,12 @@ struct PlanConfigDefinition {
 pub struct PlanConfig {
     pub inputs: HashMap<Item, f64>,
     pub outputs: Vec<ItemValuePair>,
-    pub recipes: Vec<Recipe>,
+    pub recipes: RecipeDatabase,
 }
 
 #[allow(dead_code)]
 impl PlanConfig {
-    pub fn new(outputs: Vec<ItemValuePair>, recipes: Vec<Recipe>) -> Self {
+    pub fn new(outputs: Vec<ItemValuePair>, recipes: RecipeDatabase) -> Self {
         PlanConfig {
             inputs: DEFAULT_LIMITS.iter().copied().collect(),
             outputs,
@@ -170,7 +161,7 @@ impl PlanConfig {
     pub fn with_inputs(
         inputs: HashMap<Item, f64>,
         outputs: Vec<ItemValuePair>,
-        recipes: Vec<Recipe>,
+        recipes: RecipeDatabase,
     ) -> Self {
         PlanConfig {
             inputs: DEFAULT_LIMITS.iter().copied().chain(inputs).collect(),
@@ -179,14 +170,17 @@ impl PlanConfig {
         }
     }
 
-    pub fn from_file(file_path: &str, all_recipes: &[Recipe]) -> anyhow::Result<Self> {
+    pub fn from_file(file_path: &str, recipe_db: &RecipeDatabase) -> anyhow::Result<Self> {
         let file = File::open(file_path)?;
         let config: PlanConfigDefinition = serde_yaml::from_reader(file)?;
 
-        Ok(Self::convert(config, all_recipes)?)
+        Ok(Self::convert(config, recipe_db)?)
     }
 
-    fn convert(config: PlanConfigDefinition, all_recipes: &[Recipe]) -> Result<Self, PlanError> {
+    fn convert(
+        config: PlanConfigDefinition,
+        recipe_db: &RecipeDatabase,
+    ) -> Result<Self, PlanError> {
         let mut inputs: HashMap<Item, f64> = DEFAULT_LIMITS.iter().copied().collect();
         inputs.extend(config.inputs);
 
@@ -197,20 +191,12 @@ impl PlanConfig {
             }
         }
 
-        let mut recipes: Vec<Recipe> = Vec::new();
-        let mut recipe_exclusions: Vec<Recipe> = Vec::new();
         for matcher in &config.enabled_recipes {
-            let matching_recipes = matcher.all_matching(all_recipes)?;
-            if matcher.is_include() {
-                recipes.extend(matching_recipes);
-            } else {
-                recipe_exclusions.extend(matching_recipes);
-            }
+            matcher.validate(&recipe_db.recipes)?;
         }
 
-        recipes.retain(|recipe| !recipe_exclusions.contains(recipe));
-        recipes.sort_by(|a, b| a.name.cmp(&b.name));
-        recipes.dedup();
+        let (include_matchers, exclude_matchers): (Vec<_>, Vec<_>) =
+            config.enabled_recipes.iter().partition(|m| m.is_include());
 
         Ok(PlanConfig {
             inputs,
@@ -219,20 +205,11 @@ impl PlanConfig {
                 .iter()
                 .map(|(item, value)| ItemValuePair::new(*item, *value))
                 .collect(),
-            recipes,
+            recipes: recipe_db.filter(|recipe| {
+                include_matchers.iter().any(|m| m.matches(*recipe))
+                    && !exclude_matchers.iter().any(|m| m.matches(*recipe))
+            }),
         })
-    }
-
-    pub fn find_recipe_by_output(&self, output: Item) -> impl Iterator<Item = &Recipe> {
-        self.recipes
-            .iter()
-            .filter(move |recipe| recipe.has_output_item(output))
-    }
-
-    pub fn find_recipe_by_input(&self, input: Item) -> impl Iterator<Item = &Recipe> {
-        self.recipes
-            .iter()
-            .filter(move |recipe| recipe.has_input_item(input))
     }
 
     pub fn has_input(&self, item: Item) -> bool {

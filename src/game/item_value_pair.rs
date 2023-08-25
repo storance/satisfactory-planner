@@ -52,6 +52,20 @@ impl AddAssign<f64> for ItemValuePair {
     }
 }
 
+impl AddAssign<ItemValuePair> for ItemValuePair {
+    fn add_assign(&mut self, rhs: ItemValuePair) {
+        assert!(self.item == rhs.item);
+        self.value += rhs.value
+    }
+}
+
+impl AddAssign<&ItemValuePair> for ItemValuePair {
+    fn add_assign(&mut self, rhs: &ItemValuePair) {
+        assert!(self.item == rhs.item);
+        self.value += rhs.value
+    }
+}
+
 impl Sub<f64> for ItemValuePair {
     type Output = Self;
 
@@ -72,6 +86,20 @@ impl Sub<ItemValuePair> for ItemValuePair {
 impl SubAssign<f64> for ItemValuePair {
     fn sub_assign(&mut self, rhs: f64) {
         self.value = f64::max(0.0, self.value - rhs);
+    }
+}
+
+impl SubAssign<ItemValuePair> for ItemValuePair {
+    fn sub_assign(&mut self, rhs: ItemValuePair) {
+        assert!(self.item == rhs.item);
+        self.value = f64::max(0.0, self.value - rhs.value);
+    }
+}
+
+impl SubAssign<&ItemValuePair> for ItemValuePair {
+    fn sub_assign(&mut self, rhs: &ItemValuePair) {
+        assert!(self.item == rhs.item);
+        self.value = f64::max(0.0, self.value - rhs.value);
     }
 }
 

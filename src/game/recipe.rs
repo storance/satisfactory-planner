@@ -23,6 +23,8 @@ struct RecipeDefinition {
 #[derive(Debug, Serialize, Deserialize)]
 struct RecipesRoot {
     pub recipes: Vec<RecipeDefinition>,
+    #[serde(default)]
+    pub by_product_blacklist: Vec<Item>,
 }
 
 #[derive(Debug, Clone)]
@@ -36,7 +38,13 @@ pub struct Recipe {
     pub machine: Machine,
 }
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct RecipeDatabase {
+    pub recipes: Vec<Recipe>,
+    pub by_product_blacklist: Vec<Item>,
+}
+
+#[derive(Error, Debug, Eq, PartialEq)]
 pub enum RecipeError {
     #[error("Recipe `{0}`: At least one input is required but none were provided")]
     MissingInputs(String),
@@ -58,15 +66,15 @@ const fn default_power_multiplier() -> f32 {
     1.0
 }
 
-impl Recipe {
-    pub fn load_from_file(file_path: &str) -> anyhow::Result<Vec<Recipe>> {
+impl RecipeDatabase {
+    pub fn from_file(file_path: &str) -> anyhow::Result<Self> {
         let file = File::open(file_path)?;
         let config: RecipesRoot = serde_yaml::from_reader(file)?;
 
         Ok(Self::convert(config)?)
     }
 
-    fn convert(config: RecipesRoot) -> Result<Vec<Recipe>, RecipeError> {
+    fn convert(config: RecipesRoot) -> Result<Self, RecipeError> {
         let mut converted_recipes: Vec<Recipe> = Vec::with_capacity(config.recipes.len());
         for recipe in config.recipes {
             Self::check_for_duplicate_io(&recipe.inputs, |item| {
@@ -110,7 +118,10 @@ impl Recipe {
             converted_recipes.push(recipe.into());
         }
 
-        Ok(converted_recipes)
+        Ok(Self {
+            recipes: converted_recipes,
+            by_product_blacklist: config.by_product_blacklist,
+        })
     }
 
     fn check_for_duplicate_io<F>(io: &[ItemValuePair], err: F) -> Result<(), RecipeError>
@@ -128,27 +139,110 @@ impl Recipe {
         Ok(())
     }
 
-    #[allow(dead_code)]
+    pub fn filter<F>(&self, predicate: F) -> Self
+    where
+        F: Fn(&&Recipe) -> bool,
+    {
+        Self {
+            recipes: self.recipes.iter().filter(predicate).cloned().collect(),
+            by_product_blacklist: self.by_product_blacklist.clone(),
+        }
+    }
+
+    pub fn find_recipes_by_output(&self, item: Item) -> Vec<&Recipe> {
+        let primary_output_only = self.by_product_blacklist.contains(&item);
+
+        self.recipes
+            .iter()
+            .filter(|r| {
+                if primary_output_only {
+                    r.outputs.first().map(|o| o.item == item).unwrap_or(false)
+                } else {
+                    r.has_output_item(item)
+                }
+            })
+            .collect()
+    }
+}
+
+impl From<Vec<Recipe>> for RecipeDatabase {
+    fn from(recipes: Vec<Recipe>) -> Self {
+        RecipeDatabase {
+            recipes,
+            by_product_blacklist: Vec::new(),
+        }
+    }
+}
+
+#[allow(dead_code)]
+impl Recipe {
+    pub fn new_base(
+        name: String,
+        inputs: Vec<ItemValuePair>,
+        outputs: Vec<ItemValuePair>,
+        machine: Machine,
+    ) -> Self {
+        Self {
+            name: name,
+            alternate: false,
+            ficsmas: false,
+            inputs,
+            outputs,
+            power_multiplier: 1.0,
+            machine,
+        }
+    }
+
+    pub fn new_alt(
+        name: String,
+        inputs: Vec<ItemValuePair>,
+        outputs: Vec<ItemValuePair>,
+        machine: Machine,
+    ) -> Self {
+        Self {
+            name: name,
+            alternate: true,
+            ficsmas: false,
+            inputs,
+            outputs,
+            power_multiplier: 1.0,
+            machine,
+        }
+    }
+
+    pub fn new_ficsmas(
+        name: String,
+        inputs: Vec<ItemValuePair>,
+        outputs: Vec<ItemValuePair>,
+        machine: Machine,
+    ) -> Self {
+        Self {
+            name: name,
+            alternate: false,
+            ficsmas: true,
+            inputs,
+            outputs,
+            power_multiplier: 1.0,
+            machine,
+        }
+    }
+
     pub fn calc_min_power(&self) -> f32 {
         self.machine.min_power() as f32 * self.power_multiplier
     }
 
-    #[allow(dead_code)]
     pub fn calc_max_power(&self) -> f32 {
         self.machine.max_power() as f32 * self.power_multiplier
     }
 
-    #[allow(dead_code)]
     pub fn calc_avg_power(&self) -> f32 {
         (self.calc_min_power() + self.calc_max_power()) / 2.0
     }
 
-    #[allow(dead_code)]
     pub fn calc_overclocked_avg_power(&self, clock_speed: f32) -> f32 {
         self.calc_avg_power() * (clock_speed / 100.0).powf(1.321928)
     }
 
-    #[allow(dead_code)]
     pub fn find_input_by_item(&self, item: Item) -> Option<&ItemValuePair> {
         self.inputs.iter().find(|output| output.item == item)
     }
@@ -161,7 +255,6 @@ impl Recipe {
         self.outputs.iter().any(|output| output.item == item)
     }
 
-    #[allow(dead_code)]
     pub fn has_input_item(&self, item: Item) -> bool {
         self.inputs.iter().any(|input| input.item == item)
     }
@@ -210,7 +303,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn convert() {
+    fn recipe_database_convert() {
         let recipe_def = RecipeDefinition {
             name: String::from("Iron Ingot"),
             alternate: false,
@@ -222,25 +315,24 @@ mod tests {
             machine: Machine::Smelter,
         };
 
-        let result = Recipe::convert(RecipesRoot {
+        let result = RecipeDatabase::convert(RecipesRoot {
             recipes: vec![recipe_def],
+            by_product_blacklist: Vec::new(),
         });
 
-        let expected_recipe = Recipe {
-            name: String::from("Iron Ingot"),
-            alternate: false,
-            ficsmas: false,
-            inputs: vec![ItemValuePair::new(Item::IronOre, 15.0)],
-            outputs: vec![ItemValuePair::new(Item::IronIngot, 15.0)],
-            power_multiplier: 1.0,
-            machine: Machine::Smelter,
-        };
+        let expected_recipe = Recipe::new_base(
+            "Iron Ingot".into(),
+            vec![ItemValuePair::new(Item::IronOre, 15.0)],
+            vec![ItemValuePair::new(Item::IronIngot, 15.0)],
+            Machine::Smelter,
+        );
 
-        assert_eq!(result, Ok(vec![expected_recipe]));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().recipes, vec![expected_recipe]);
     }
 
     #[test]
-    fn convert_duplicate_inputs() {
+    fn recipe_database_convert_duplicate_inputs() {
         let recipe_def = RecipeDefinition {
             name: String::from("Beacon"),
             alternate: false,
@@ -257,8 +349,9 @@ mod tests {
             machine: Machine::Manufacturer,
         };
 
-        let result = Recipe::convert(RecipesRoot {
+        let result = RecipeDatabase::convert(RecipesRoot {
             recipes: vec![recipe_def],
+            by_product_blacklist: Vec::new(),
         });
 
         assert_eq!(
@@ -271,7 +364,7 @@ mod tests {
     }
 
     #[test]
-    fn convert_duplicate_outputs() {
+    fn recipe_database_convert_duplicate_outputs() {
         let recipe_def = RecipeDefinition {
             name: String::from("Encased Uranium Cell"),
             alternate: false,
@@ -290,8 +383,9 @@ mod tests {
             machine: Machine::Blender,
         };
 
-        let result = Recipe::convert(RecipesRoot {
+        let result = RecipeDatabase::convert(RecipesRoot {
             recipes: vec![recipe_def],
+            by_product_blacklist: Vec::new(),
         });
 
         assert_eq!(
@@ -304,7 +398,7 @@ mod tests {
     }
 
     #[test]
-    fn convert_missing_inputs() {
+    fn recipe_database_convert_missing_inputs() {
         let recipe_def = RecipeDefinition {
             name: String::from("Iron Ingot"),
             alternate: false,
@@ -316,15 +410,16 @@ mod tests {
             machine: Machine::Smelter,
         };
 
-        let result = Recipe::convert(RecipesRoot {
+        let result = RecipeDatabase::convert(RecipesRoot {
             recipes: vec![recipe_def],
+            by_product_blacklist: Vec::new(),
         });
 
         assert_eq!(result, Err(RecipeError::MissingInputs("Iron Ingot".into())));
     }
 
     #[test]
-    fn convert_missing_outputs() {
+    fn recipe_database_convert_missing_outputs() {
         let recipe_def = RecipeDefinition {
             name: String::from("Iron Ingot"),
             alternate: false,
@@ -336,8 +431,9 @@ mod tests {
             machine: Machine::Smelter,
         };
 
-        let result = Recipe::convert(RecipesRoot {
+        let result = RecipeDatabase::convert(RecipesRoot {
             recipes: vec![recipe_def],
+            by_product_blacklist: Vec::new(),
         });
 
         assert_eq!(
@@ -347,7 +443,7 @@ mod tests {
     }
 
     #[test]
-    fn convert_incorrect_inputs() {
+    fn recipe_database_convert_incorrect_inputs() {
         let recipe_def = RecipeDefinition {
             name: String::from("Encased Uranium Cell"),
             alternate: false,
@@ -363,8 +459,9 @@ mod tests {
             machine: Machine::Blender,
         };
 
-        let result = Recipe::convert(RecipesRoot {
+        let result = RecipeDatabase::convert(RecipesRoot {
             recipes: vec![recipe_def],
+            by_product_blacklist: Vec::new(),
         });
 
         assert_eq!(
@@ -378,7 +475,7 @@ mod tests {
     }
 
     #[test]
-    fn convert_incorrect_outputs() {
+    fn recipe_database_convert_incorrect_outputs() {
         let recipe_def = RecipeDefinition {
             name: String::from("Encased Uranium Cell"),
             alternate: false,
@@ -397,8 +494,9 @@ mod tests {
             machine: Machine::Blender,
         };
 
-        let result = Recipe::convert(RecipesRoot {
+        let result = RecipeDatabase::convert(RecipesRoot {
             recipes: vec![recipe_def],
+            by_product_blacklist: Vec::new(),
         });
 
         assert_eq!(
@@ -412,7 +510,7 @@ mod tests {
     }
 
     #[test]
-    fn calc_min_power_base_multiplier() {
+    fn recipe_calc_min_power_base_multiplier() {
         let recipe = Recipe {
             name: String::from("Iron Ingot"),
             alternate: false,
@@ -427,7 +525,7 @@ mod tests {
     }
 
     #[test]
-    fn calc_min_power_with_multiplier() {
+    fn recipe_calc_min_power_with_multiplier() {
         let recipe = Recipe {
             name: String::from("Nuclear Pasta"),
             alternate: false,
@@ -445,7 +543,7 @@ mod tests {
     }
 
     #[test]
-    fn calc_max_power_base_multiplier() {
+    fn recipe_calc_max_power_base_multiplier() {
         let recipe = Recipe {
             name: String::from("Iron Ingot"),
             alternate: false,
@@ -460,7 +558,7 @@ mod tests {
     }
 
     #[test]
-    fn calc_max_power_with_multiplier() {
+    fn recipe_calc_max_power_with_multiplier() {
         let recipe = Recipe {
             name: String::from("Nuclear Pasta"),
             alternate: false,
@@ -478,7 +576,7 @@ mod tests {
     }
 
     #[test]
-    fn calc_avg_power_base_multiplier() {
+    fn recipe_calc_avg_power_base_multiplier() {
         let recipe = Recipe {
             name: String::from("Plutonium Pellet"),
             alternate: false,
@@ -496,7 +594,7 @@ mod tests {
     }
 
     #[test]
-    fn calc_avg_power_with_multiplier() {
+    fn recipe_calc_avg_power_with_multiplier() {
         let recipe = Recipe {
             name: String::from("Nuclear Pasta"),
             alternate: false,
@@ -514,7 +612,7 @@ mod tests {
     }
 
     #[test]
-    fn calc_overclocked_avg_power() {
+    fn recipe_calc_overclocked_avg_power() {
         let recipe = Recipe {
             name: String::from("Iron Ingot"),
             alternate: false,
