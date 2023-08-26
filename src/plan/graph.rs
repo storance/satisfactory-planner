@@ -1,4 +1,5 @@
-use petgraph::stable_graph::StableDiGraph;
+use petgraph::stable_graph::{EdgeIndex, StableDiGraph};
+use petgraph::Direction;
 use petgraph::{dot::Dot, graph::NodeIndex};
 
 use crate::{
@@ -6,6 +7,7 @@ use crate::{
     utils::round_f64,
 };
 use std::fmt;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Production<'a> {
@@ -21,26 +23,9 @@ pub enum NodeValue<'a> {
     Production(Production<'a>),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub struct NodeEdge {
-    pub value: ItemValuePair,
-    pub order: u32,
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct ScoredNodeValue<'a> {
-    pub node: NodeValue<'a>,
-    pub score: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct ScoredNodeEdge {
-    pub value: ItemValuePair,
-    pub path_ids: Vec<u32>,
-}
 
 pub type GraphType<'a> = StableDiGraph<NodeValue<'a>, NodeEdge>;
-pub type ScoredGraphType<'a> = StableDiGraph<NodeValue<'a>, ItemValuePair>;
+pub type ScoredGraphType<'a> = StableDiGraph<NodeValue<'a>, ScoredNodeEdge>;
 
 #[allow(dead_code)]
 impl<'a> NodeValue<'a> {
@@ -176,64 +161,25 @@ impl<'a> fmt::Display for NodeValue<'a> {
     }
 }
 
-#[allow(dead_code)]
-impl<'a> ScoredNodeValue<'a> {
-    pub fn new_input(input: ItemValuePair) -> Self {
-        Self::from(NodeValue::new_input(input))
-    }
-
-    pub fn new_output(output: ItemValuePair) -> Self {
-        Self::from(NodeValue::new_output(output))
-    }
-    pub fn new_by_product(output: ItemValuePair) -> Self {
-        Self::from(NodeValue::new_by_product(output))
-    }
-
-    pub fn new_production(recipe: &'a Recipe, machine_count: f64) -> Self {
-        Self::from(NodeValue::new_production(recipe, machine_count))
-    }
-
-    pub fn is_input(&self) -> bool {
-        self.node.is_input()
-    }
-
-    pub fn is_output(&self) -> bool {
-        self.node.is_output()
-    }
-
-    pub fn is_production(&self) -> bool {
-        self.node.is_production()
-    }
-
-    pub fn is_by_product(&self) -> bool {
-        self.node.is_by_product()
-    }
-}
-
-impl<'a> From<ScoredNodeValue<'a>> for NodeValue<'a> {
-    fn from(value: ScoredNodeValue<'a>) -> Self {
-        value.node
-    }
-}
-
-impl<'a> fmt::Display for ScoredNodeValue<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}\nScore: {}\n", self.node, round_f64(self.score, 3))
-    }
-}
-
-impl<'a> From<NodeValue<'a>> for ScoredNodeValue<'a> {
-    fn from(node: NodeValue<'a>) -> Self {
-        Self {
-            node,
-            score: f64::INFINITY
-        }
-    }
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct NodeEdge {
+    pub value: ItemValuePair,
+    pub order: u32,
 }
 
 impl NodeEdge {
     pub fn new(value: ItemValuePair, order: u32) -> Self {
         Self { value, order }
+    }
+
+    #[inline]
+    pub fn item(&self) -> Item {
+        self.value.item
+    }
+
+    #[inline]
+    pub fn value(&self) -> f64 {
+        self.value.value
     }
 }
 
@@ -248,21 +194,111 @@ impl fmt::Display for NodeEdge {
     }
 }
 
-pub fn find_input_node<E>(graph: &StableDiGraph<NodeValue<'_>,  E>, item: Item) -> Option<NodeIndex> {
+#[derive(Debug, Clone)]
+pub struct PathChain(Vec<u32>);
+
+static ID_GENERATOR: AtomicU32 = AtomicU32::new(0);
+
+impl PathChain {
+    pub fn new() -> Self {
+        let id = ID_GENERATOR.fetch_add(1, Ordering::Relaxed);
+        Self(vec![id])
+    }
+
+    pub fn empty() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn next(&self) -> Self {
+        let mut chain = self.0.clone();
+        let id = ID_GENERATOR.fetch_add(1, Ordering::Relaxed);
+        chain.push(id);
+
+        Self(chain)
+    }
+
+    pub fn is_subset_of(&self, other: &Self) -> bool {
+        other.0.starts_with(self.0.as_slice())
+    }
+
+    pub fn id(&self) -> u32 {
+        self.0.last().copied().unwrap()
+    }
+}
+
+impl fmt::Display for PathChain {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "[{}]",
+            self.0
+                .iter()
+                .map(|i| format!("{}", i))
+                .collect::<Vec<String>>()
+                .join(",")
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ScoredNodeEdge {
+    pub value: ItemValuePair,
+    pub score: f64,
+    pub chain: PathChain,
+}
+
+impl ScoredNodeEdge {
+    pub fn new(value: ItemValuePair, chain: PathChain) -> Self {
+        Self {
+            value,
+            score: f64::INFINITY,
+            chain,
+        }
+    }
+
+    #[inline]
+    pub fn item(&self) -> Item {
+        self.value.item
+    }
+}
+
+impl fmt::Display for ScoredNodeEdge {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}\n{} / min\nScore: {}\nChain: {}",
+            self.value.item,
+            round_f64(self.value.value, 3),
+            round_f64(self.score, 1),
+            self.chain
+        )
+    }
+}
+
+pub fn find_input_node<E>(
+    graph: &StableDiGraph<NodeValue<'_>, E>,
+    item: Item,
+) -> Option<NodeIndex> {
     graph.node_indices().find(|i| match graph[*i] {
         NodeValue::Input(input) => item == input.item,
         _ => false,
     })
 }
 
-pub fn find_production_node<E>(graph: &StableDiGraph<NodeValue<'_>,  E>, recipe: &Recipe) -> Option<NodeIndex> {
+pub fn find_production_node<E>(
+    graph: &StableDiGraph<NodeValue<'_>, E>,
+    recipe: &Recipe,
+) -> Option<NodeIndex> {
     graph.node_indices().find(|i| match graph[*i] {
         NodeValue::Production(production) => production.recipe == recipe,
         _ => false,
     })
 }
 
-pub fn find_output_node<E>(graph: &StableDiGraph<NodeValue<'_>,  E>, item: Item) -> Option<NodeIndex> {
+pub fn find_output_node<E>(
+    graph: &StableDiGraph<NodeValue<'_>, E>,
+    item: Item,
+) -> Option<NodeIndex> {
     graph.node_indices().find(|i| match graph[*i] {
         NodeValue::Output(output) => item == output.item,
         _ => false,
@@ -270,44 +306,32 @@ pub fn find_output_node<E>(graph: &StableDiGraph<NodeValue<'_>,  E>, item: Item)
 }
 
 #[allow(dead_code)]
-pub fn find_by_product_node<E>(graph: &StableDiGraph<NodeValue<'_>,  E>, item: Item) -> Option<NodeIndex> {
+pub fn find_by_product_node<E>(
+    graph: &StableDiGraph<NodeValue<'_>, E>,
+    item: Item,
+) -> Option<NodeIndex> {
     graph.node_indices().find(|i| match graph[*i] {
         NodeValue::ByProduct(output) => item == output.item,
         _ => false,
     })
 }
 
-pub fn print_graph(graph: &GraphType) {
-    println!(
-        "{}",
-        format!(
-            "{}",
-            Dot::with_attr_getters(&graph, &[], &|_, _| String::new(), &|_, n| {
-                let color = match n.1 {
-                    NodeValue::Input(input) => {
-                        if input.item.is_extractable() {
-                            "lightslategray"
-                        } else {
-                            "peru"
-                        }
-                    }
-                    NodeValue::Output(..) => "mediumseagreen",
-                    NodeValue::ByProduct(..) => "cornflowerblue",
-                    NodeValue::Production(..) => "darkorange",
-                };
+pub fn walk_neighbors_detached<N, E, F>(
+    graph: &mut StableDiGraph<N, E>,
+    index: NodeIndex,
+    dir: Direction,
+    mut f: F,
+) where
+    F: FnMut(&mut StableDiGraph<N, E>, EdgeIndex, NodeIndex),
+{
+    let mut child_walker = graph.neighbors_directed(index, dir).detach();
 
-                format!(
-                    "style=\"solid,filled\" shape=\"box\" fontcolor=\"white\" color=\"{}\"",
-                    color
-                )
-            })
-        )
-        .replace("\\l", "\\n")
-    );
+    while let Some((edge_index, source_index)) = child_walker.next(graph) {
+        f(graph, edge_index, source_index);
+    }
 }
 
-#[allow(dead_code)]
-pub fn print_scored_graph(graph: &ScoredGraphType) {
+pub fn print_graph<'a, E: fmt::Display>(graph: &StableDiGraph<NodeValue<'a>, E>) {
     println!(
         "{}",
         format!(

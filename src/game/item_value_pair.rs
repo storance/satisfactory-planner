@@ -3,9 +3,10 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::fmt::Debug;
-use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Sub, SubAssign, Neg};
 
 use crate::game::Item;
+use crate::utils::EPSILON;
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub struct ItemValuePair {
@@ -14,17 +15,32 @@ pub struct ItemValuePair {
 }
 
 impl ItemValuePair {
+    #[inline]
     pub fn new(item: Item, value: f64) -> Self {
         Self {
             item,
-            value: f64::max(0.0, value),
+            value
         }
     }
 
-    pub fn with_value(&self, new_value: f64) -> Self {
+    pub fn normalize(&mut self) {
+        if self.value.abs() < EPSILON {
+            self.value = 0.0;
+        }
+    }
+
+    pub fn is_zero(&self) -> bool {
+        self.value.abs() < EPSILON
+    }
+}
+
+impl Neg for ItemValuePair {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
         Self {
             item: self.item,
-            value: f64::max(0.0, new_value),
+            value: -self.value
         }
     }
 }
@@ -33,7 +49,10 @@ impl Add<f64> for ItemValuePair {
     type Output = Self;
 
     fn add(self, rhs: f64) -> Self::Output {
-        self.with_value(self.value + rhs)
+        Self {
+            item: self.item,
+            value: self.value + rhs
+        }
     }
 }
 
@@ -42,7 +61,10 @@ impl Add<ItemValuePair> for ItemValuePair {
 
     fn add(self, rhs: ItemValuePair) -> Self::Output {
         assert!(self.item == rhs.item);
-        self.with_value(self.value + rhs.value)
+        Self {
+            item: self.item,
+            value: self.value + rhs.value
+        }
     }
 }
 
@@ -70,7 +92,10 @@ impl Sub<f64> for ItemValuePair {
     type Output = Self;
 
     fn sub(self, rhs: f64) -> Self::Output {
-        self.with_value(self.value - rhs)
+        Self {
+            item: self.item,
+            value: self.value - rhs
+        }
     }
 }
 
@@ -79,27 +104,30 @@ impl Sub<ItemValuePair> for ItemValuePair {
 
     fn sub(self, rhs: ItemValuePair) -> Self::Output {
         assert!(self.item == rhs.item);
-        self.with_value(self.value - rhs.value)
+        Self {
+            item: self.item,
+            value: self.value - rhs.value
+        }
     }
 }
 
 impl SubAssign<f64> for ItemValuePair {
     fn sub_assign(&mut self, rhs: f64) {
-        self.value = f64::max(0.0, self.value - rhs);
+        self.value -= rhs;
     }
 }
 
 impl SubAssign<ItemValuePair> for ItemValuePair {
     fn sub_assign(&mut self, rhs: ItemValuePair) {
         assert!(self.item == rhs.item);
-        self.value = f64::max(0.0, self.value - rhs.value);
+        self.value -= rhs.value;
     }
 }
 
 impl SubAssign<&ItemValuePair> for ItemValuePair {
     fn sub_assign(&mut self, rhs: &ItemValuePair) {
         assert!(self.item == rhs.item);
-        self.value = f64::max(0.0, self.value - rhs.value);
+        self.value -= rhs.value;
     }
 }
 
@@ -107,7 +135,10 @@ impl Mul<f64> for ItemValuePair {
     type Output = Self;
 
     fn mul(self, rhs: f64) -> Self::Output {
-        self.with_value(self.value * rhs)
+        Self {
+            item: self.item,
+            value: self.value * rhs
+        }
     }
 }
 

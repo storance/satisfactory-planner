@@ -1,3 +1,5 @@
+use std::fmt;
+
 use thiserror::Error;
 
 mod config;
@@ -61,6 +63,38 @@ impl ItemBitSet {
         debug_assert!(item.is_extractable());
         1 << (item as u32 % 16)
     }
+}
+
+impl fmt::Display for ItemBitSet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[")?;
+        let mut first = true;
+        for (item, _) in DEFAULT_LIMITS {
+            if !self.contains(item) {
+                continue;
+            }
+
+            if !first {
+                write!(f, ", {}", item)?;
+            } else {
+                write!(f, "{}", item)?;
+                first = false;
+            }
+        }
+
+        write!(f, "]")
+    }
+}
+
+fn format_itembitset(inputs: &Vec<ItemBitSet>) -> String {
+    format!(
+        "[{}]",
+        inputs
+            .iter()
+            .map(|bs| format!("{}", bs))
+            .collect::<Vec<String>>()
+            .join(", ")
+    )
 }
 
 #[cfg(test)]

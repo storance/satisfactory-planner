@@ -8,7 +8,7 @@ extern crate thiserror;
 use crate::game::{Item, Machine, Recipe};
 use crate::plan::{PlanConfig};
 use game::recipe::RecipeDatabase;
-use plan::print_graph;
+use plan::{print_graph, ScoredGraph, solve};
 
 mod game;
 mod plan;
@@ -23,11 +23,11 @@ fn main() {
         panic!("Failed to load plan: {}", e);
     });
 
-    /*let graph = solve(&plan).unwrap_or_else(|e| {
+    let graph = solve(&plan).unwrap_or_else(|e| {
         panic!("Failed to solve plan: {}", e);
     });
 
-    print_graph(&graph);*/
+    print_graph(&graph);
 }
 
 pub fn print_item(item: Item) {
