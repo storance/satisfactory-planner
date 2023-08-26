@@ -1,13 +1,12 @@
-use crate::game::{recipe, Item, ItemValuePair, Recipe};
-use crate::plan::{find_production_node, format_itembitset, ItemBitSet, NodeValue, PlanConfig};
-use crate::utils::{is_zero, EPSILON};
+use crate::game::{Item, ItemValuePair, Recipe};
+use crate::plan::{find_production_node, ItemBitSet, NodeValue, PlanConfig};
+use crate::utils::EPSILON;
 
-use petgraph::adj::EdgeReference;
 use petgraph::graph::NodeIndex;
-use petgraph::matrix_graph::node_index;
-use petgraph::stable_graph::{DefaultIx, EdgeIndex, StableDiGraph};
-use petgraph::visit::{EdgeRef, IntoEdgesDirected};
-use petgraph::Direction::{self, Outgoing};
+
+use petgraph::stable_graph::EdgeIndex;
+use petgraph::visit::EdgeRef;
+
 use petgraph::Incoming;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -26,7 +25,7 @@ pub struct SolverError(Item);
 
 pub type SolverResult<T> = Result<T, SolverError>;
 
-pub fn solve<'a>(config: &'a PlanConfig) -> SolverResult<GraphType<'a>> {
+pub fn solve(config: &PlanConfig) -> SolverResult<GraphType<'_>> {
     Solver::new(config).solve()
 }
 
@@ -89,7 +88,10 @@ impl<'a> Solver<'a> {
     fn solve(&mut self) -> SolverResult<GraphType<'a>> {
         let mut graph: GraphType<'a> = GraphType::new();
 
-        let outputs: Vec<MergeNode> = self.scored_graph.output_nodes.iter()
+        let outputs: Vec<MergeNode> = self
+            .scored_graph
+            .output_nodes
+            .iter()
             .map(|output| MergeNode::new(output.index, PathChain::empty(), output.output))
             .collect();
 
@@ -160,13 +162,10 @@ impl<'a> Solver<'a> {
 
             let child_node =
                 MergeNode::new(c, self.scored_graph[e].chain.clone(), remaining_output);
-            match self.merge_optimal_path(child_node, graph) {
-                Ok((child_index, leftover_output)) => {
-                    new_children.push((child_index, remaining_output - leftover_output.value));
-                    remaining_output = leftover_output;
-                    remaining_output.normalize();
-                }
-                _ => {}
+            if let Ok((child_index, leftover_output)) = self.merge_optimal_path(child_node, graph) {
+                new_children.push((child_index, remaining_output - leftover_output.value));
+                remaining_output = leftover_output;
+                remaining_output.normalize();
             }
         }
 
@@ -266,13 +265,10 @@ impl<'a> Solver<'a> {
                 self.scored_graph[edge_index].chain.clone(),
                 remaining_output,
             );
-            match self.merge_optimal_path(child_node, graph) {
-                Ok((child_index, leftover_output)) => {
-                    new_children.push((child_index, remaining_output - leftover_output.value));
-                    remaining_output = leftover_output;
-                    remaining_output.normalize();
-                }
-                _ => {}
+            if let Ok((child_index, leftover_output)) = self.merge_optimal_path(child_node, graph) {
+                new_children.push((child_index, remaining_output - leftover_output.value));
+                remaining_output = leftover_output;
+                remaining_output.normalize();
             }
         }
 
@@ -427,9 +423,9 @@ impl<'a> Solver<'a> {
 
 fn merge_by_product_node<'a>(
     desired_output: ItemValuePair,
-    src_graph: &ScoredGraphType<'a>,
+    _src_graph: &ScoredGraphType<'a>,
     dest_graph: &mut GraphType<'a>,
-    input_limits: &mut HashMap<Item, f64>,
+    _input_limits: &mut HashMap<Item, f64>,
 ) {
     // TODO: follow outgoing path
 
@@ -617,7 +613,7 @@ impl<'a> ScoredGraph<'a> {
     }
 
     pub fn score_edge(&mut self, edge_index: EdgeIndex) -> f64 {
-        let (child_index, parent_index) = self.graph.edge_endpoints(edge_index).unwrap();
+        let (child_index, _parent_index) = self.graph.edge_endpoints(edge_index).unwrap();
         let edge_weight = self.graph[edge_index].value;
 
         let score = match self.graph[child_index] {
@@ -677,7 +673,7 @@ impl<'a> ScoredGraph<'a> {
         parent_weight.chain.is_subset_of(&child_weight.chain)
     }
 
-    fn count_unique_inputs(&self, input_combinations: &Vec<ItemBitSet>) -> u8 {
+    fn count_unique_inputs(&self, input_combinations: &[ItemBitSet]) -> u8 {
         let mut unique_inputs = Vec::new();
         input_combinations.iter().for_each(|a| {
             if !unique_inputs
@@ -710,7 +706,7 @@ impl<'a> ScoredGraph<'a> {
                     Vec::new()
                 }
             }
-            NodeValue::Production(production) => {
+            NodeValue::Production(_production) => {
                 let mut inputs_by_item: HashMap<Item, Vec<ItemBitSet>> = HashMap::new();
                 for edge in self.graph.edges_directed(node_index, Incoming) {
                     if !chain.is_subset_of(&edge.weight().chain) {
@@ -809,7 +805,7 @@ impl<'a> ScoredGraph<'a> {
             sorted_children.push((item, children_for_item));
         }
         sorted_children
-            .sort_by_key(|(item, _)| self.unique_inputs_by_item.get(&item).copied().unwrap_or(0));
+            .sort_by_key(|(item, _)| self.unique_inputs_by_item.get(item).copied().unwrap_or(0));
 
         sorted_children
     }
@@ -857,7 +853,7 @@ fn item_combinations(inputs_by_item: &HashMap<Item, Vec<ItemBitSet>>) -> Vec<Ite
 mod tests {
     use petgraph::visit::IntoEdgeReferences;
 
-    use crate::game::{recipe::RecipeDatabase, Machine};
+    use crate::game::Machine;
 
     use super::*;
 

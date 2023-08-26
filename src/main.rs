@@ -5,10 +5,10 @@ extern crate serde;
 extern crate serde_yaml;
 extern crate thiserror;
 
-use crate::game::{Item, Machine, Recipe};
-use crate::plan::{PlanConfig};
+use crate::game::{Item, Machine};
+use crate::plan::PlanConfig;
 use game::recipe::RecipeDatabase;
-use plan::{print_graph, ScoredGraph, solve};
+use plan::{print_graph, solve};
 
 mod game;
 mod plan;

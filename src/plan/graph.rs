@@ -23,7 +23,6 @@ pub enum NodeValue<'a> {
     Production(Production<'a>),
 }
 
-
 pub type GraphType<'a> = StableDiGraph<NodeValue<'a>, NodeEdge>;
 pub type ScoredGraphType<'a> = StableDiGraph<NodeValue<'a>, ScoredNodeEdge>;
 
@@ -331,7 +330,7 @@ pub fn walk_neighbors_detached<N, E, F>(
     }
 }
 
-pub fn print_graph<'a, E: fmt::Display>(graph: &StableDiGraph<NodeValue<'a>, E>) {
+pub fn print_graph<E: fmt::Display>(graph: &StableDiGraph<NodeValue<'_>, E>) {
     println!(
         "{}",
         format!(

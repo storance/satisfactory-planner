@@ -3,7 +3,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::fmt::Debug;
-use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Sub, SubAssign, Neg};
+use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use crate::game::Item;
 use crate::utils::EPSILON;
@@ -17,10 +17,7 @@ pub struct ItemValuePair {
 impl ItemValuePair {
     #[inline]
     pub fn new(item: Item, value: f64) -> Self {
-        Self {
-            item,
-            value
-        }
+        Self { item, value }
     }
 
     pub fn normalize(&mut self) {
@@ -40,7 +37,7 @@ impl Neg for ItemValuePair {
     fn neg(self) -> Self::Output {
         Self {
             item: self.item,
-            value: -self.value
+            value: -self.value,
         }
     }
 }
@@ -51,7 +48,7 @@ impl Add<f64> for ItemValuePair {
     fn add(self, rhs: f64) -> Self::Output {
         Self {
             item: self.item,
-            value: self.value + rhs
+            value: self.value + rhs,
         }
     }
 }
@@ -63,7 +60,7 @@ impl Add<ItemValuePair> for ItemValuePair {
         assert!(self.item == rhs.item);
         Self {
             item: self.item,
-            value: self.value + rhs.value
+            value: self.value + rhs.value,
         }
     }
 }
@@ -94,7 +91,7 @@ impl Sub<f64> for ItemValuePair {
     fn sub(self, rhs: f64) -> Self::Output {
         Self {
             item: self.item,
-            value: self.value - rhs
+            value: self.value - rhs,
         }
     }
 }
@@ -106,7 +103,7 @@ impl Sub<ItemValuePair> for ItemValuePair {
         assert!(self.item == rhs.item);
         Self {
             item: self.item,
-            value: self.value - rhs.value
+            value: self.value - rhs.value,
         }
     }
 }
@@ -137,7 +134,7 @@ impl Mul<f64> for ItemValuePair {
     fn mul(self, rhs: f64) -> Self::Output {
         Self {
             item: self.item,
-            value: self.value * rhs
+            value: self.value * rhs,
         }
     }
 }

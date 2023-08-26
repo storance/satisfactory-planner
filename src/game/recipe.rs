@@ -183,7 +183,7 @@ impl Recipe {
         machine: Machine,
     ) -> Self {
         Self {
-            name: name,
+            name,
             alternate: false,
             ficsmas: false,
             inputs,
@@ -200,7 +200,7 @@ impl Recipe {
         machine: Machine,
     ) -> Self {
         Self {
-            name: name,
+            name,
             alternate: true,
             ficsmas: false,
             inputs,
@@ -217,7 +217,7 @@ impl Recipe {
         machine: Machine,
     ) -> Self {
         Self {
-            name: name,
+            name,
             alternate: false,
             ficsmas: true,
             inputs,

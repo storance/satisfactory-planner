@@ -48,14 +48,20 @@ impl RecipeMatcher {
     pub fn validate(&self, all_recipes: &[Recipe]) -> Result<(), PlanError> {
         match self {
             Self::IncludeByName(name) => {
-                if all_recipes.iter().any(|r| r.name.eq_ignore_ascii_case(name)) {
+                if all_recipes
+                    .iter()
+                    .any(|r| r.name.eq_ignore_ascii_case(name))
+                {
                     Ok(())
                 } else {
                     Err(PlanError::InvalidRecipe(name.clone()))
                 }
             }
             Self::ExcludeByName(name) => {
-                if all_recipes.iter().any(|r| r.name.eq_ignore_ascii_case(name)) {
+                if all_recipes
+                    .iter()
+                    .any(|r| r.name.eq_ignore_ascii_case(name))
+                {
                     Ok(())
                 } else {
                     Err(PlanError::InvalidRecipe(name.clone()))
@@ -206,8 +212,8 @@ impl PlanConfig {
                 .map(|(item, value)| ItemValuePair::new(*item, *value))
                 .collect(),
             recipes: recipe_db.filter(|recipe| {
-                include_matchers.iter().any(|m| m.matches(*recipe))
-                    && !exclude_matchers.iter().any(|m| m.matches(*recipe))
+                include_matchers.iter().any(|m| m.matches(recipe))
+                    && !exclude_matchers.iter().any(|m| m.matches(recipe))
             }),
         })
     }

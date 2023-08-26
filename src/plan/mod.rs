@@ -86,7 +86,7 @@ impl fmt::Display for ItemBitSet {
     }
 }
 
-fn format_itembitset(inputs: &Vec<ItemBitSet>) -> String {
+fn format_itembitset(inputs: &[ItemBitSet]) -> String {
     format!(
         "[{}]",
         inputs
