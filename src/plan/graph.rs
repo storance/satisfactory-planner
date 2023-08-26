@@ -1,13 +1,10 @@
-use petgraph::stable_graph::{EdgeIndex, StableDiGraph};
-use petgraph::Direction;
-use petgraph::{dot::Dot, graph::NodeIndex};
-
 use crate::{
     game::{Item, ItemValuePair, Recipe},
     utils::round_f64,
 };
+use petgraph::stable_graph::StableDiGraph;
+use petgraph::{dot::Dot, graph::NodeIndex};
 use std::fmt;
-use std::sync::atomic::{AtomicU32, Ordering};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Production<'a> {
@@ -24,7 +21,6 @@ pub enum NodeValue<'a> {
 }
 
 pub type GraphType<'a> = StableDiGraph<NodeValue<'a>, NodeEdge>;
-pub type ScoredGraphType<'a> = StableDiGraph<NodeValue<'a>, ScoredNodeEdge>;
 
 #[allow(dead_code)]
 impl<'a> NodeValue<'a> {
@@ -193,87 +189,6 @@ impl fmt::Display for NodeEdge {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct PathChain(Vec<u32>);
-
-static ID_GENERATOR: AtomicU32 = AtomicU32::new(0);
-
-impl PathChain {
-    pub fn new() -> Self {
-        let id = ID_GENERATOR.fetch_add(1, Ordering::Relaxed);
-        Self(vec![id])
-    }
-
-    pub fn empty() -> Self {
-        Self(Vec::new())
-    }
-
-    pub fn next(&self) -> Self {
-        let mut chain = self.0.clone();
-        let id = ID_GENERATOR.fetch_add(1, Ordering::Relaxed);
-        chain.push(id);
-
-        Self(chain)
-    }
-
-    pub fn is_subset_of(&self, other: &Self) -> bool {
-        other.0.starts_with(self.0.as_slice())
-    }
-
-    pub fn id(&self) -> u32 {
-        self.0.last().copied().unwrap()
-    }
-}
-
-impl fmt::Display for PathChain {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "[{}]",
-            self.0
-                .iter()
-                .map(|i| format!("{}", i))
-                .collect::<Vec<String>>()
-                .join(",")
-        )
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ScoredNodeEdge {
-    pub value: ItemValuePair,
-    pub score: f64,
-    pub chain: PathChain,
-}
-
-impl ScoredNodeEdge {
-    pub fn new(value: ItemValuePair, chain: PathChain) -> Self {
-        Self {
-            value,
-            score: f64::INFINITY,
-            chain,
-        }
-    }
-
-    #[inline]
-    pub fn item(&self) -> Item {
-        self.value.item
-    }
-}
-
-impl fmt::Display for ScoredNodeEdge {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}\n{} / min\nScore: {}\nChain: {}",
-            self.value.item,
-            round_f64(self.value.value, 3),
-            round_f64(self.score, 1),
-            self.chain
-        )
-    }
-}
-
 pub fn find_input_node<E>(
     graph: &StableDiGraph<NodeValue<'_>, E>,
     item: Item,
@@ -313,21 +228,6 @@ pub fn find_by_product_node<E>(
         NodeValue::ByProduct(output) => item == output.item,
         _ => false,
     })
-}
-
-pub fn walk_neighbors_detached<N, E, F>(
-    graph: &mut StableDiGraph<N, E>,
-    index: NodeIndex,
-    dir: Direction,
-    mut f: F,
-) where
-    F: FnMut(&mut StableDiGraph<N, E>, EdgeIndex, NodeIndex),
-{
-    let mut child_walker = graph.neighbors_directed(index, dir).detach();
-
-    while let Some((edge_index, source_index)) = child_walker.next(graph) {
-        f(graph, edge_index, source_index);
-    }
 }
 
 pub fn print_graph<E: fmt::Display>(graph: &StableDiGraph<NodeValue<'_>, E>) {

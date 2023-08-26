@@ -4,10 +4,10 @@ use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
+use thiserror::Error;
 
 use crate::game::recipe::RecipeDatabase;
 use crate::game::{Item, ItemValuePair, Recipe};
-use crate::plan::PlanError;
 
 pub static DEFAULT_LIMITS: [(Item, f64); 13] = [
     (Item::Bauxite, 9780.0),
@@ -24,6 +24,14 @@ pub static DEFAULT_LIMITS: [(Item, f64); 13] = [
     (Item::Water, 9007199254740991.0),
     (Item::SAMOre, 0.0),
 ];
+
+#[derive(Error, Debug, Eq, PartialEq)]
+pub enum PlanError {
+    #[error("No recipe exists with the name `{0}`")]
+    InvalidRecipe(String),
+    #[error("The item `{0}` is not allowed in outputs.")]
+    UnexpectedRawOutputItem(Item),
+}
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 enum RecipeMatcher {

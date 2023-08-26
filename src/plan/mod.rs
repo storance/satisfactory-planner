@@ -1,27 +1,18 @@
+use crate::game::Item;
 use std::fmt;
-
-use thiserror::Error;
 
 mod config;
 mod graph;
+mod scored_graph;
 mod solver;
 
-use crate::game::Item;
 pub use config::*;
 pub use graph::*;
+pub use scored_graph::*;
 pub use solver::*;
 
-#[derive(Error, Debug, Eq, PartialEq)]
-pub enum PlanError {
-    #[error("No recipe exists with the name `{0}`")]
-    InvalidRecipe(String),
-    #[error("The raw resource `{0}` is not allowed in outputs.")]
-    UnexpectedRawOutputItem(Item),
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
-#[derive(Default)]
 struct ItemBitSet(u16);
 
 #[allow(dead_code)]
@@ -65,6 +56,27 @@ impl ItemBitSet {
     }
 }
 
+impl From<&[Item]> for ItemBitSet {
+    fn from(value: &[Item]) -> Self {
+        let mut bit_set = ItemBitSet::default();
+        value.iter().for_each(|i| bit_set.add(*i));
+
+        bit_set
+    }
+}
+
+impl<const N: usize> From<&[Item; N]> for ItemBitSet {
+    fn from(value: &[Item; N]) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
+impl From<&Vec<Item>> for ItemBitSet {
+    fn from(value: &Vec<Item>) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
 impl fmt::Display for ItemBitSet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[")?;
@@ -86,31 +98,20 @@ impl fmt::Display for ItemBitSet {
     }
 }
 
-fn format_itembitset(inputs: &[ItemBitSet]) -> String {
-    format!(
-        "[{}]",
-        inputs
-            .iter()
-            .map(|bs| format!("{}", bs))
-            .collect::<Vec<String>>()
-            .join(", ")
-    )
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
 
     #[test]
     fn test_union() {
-        let a = construct_bit_set(&[Item::IronOre, Item::CopperOre, Item::CateriumOre]);
-        let b = construct_bit_set(&[Item::IronOre, Item::Water, Item::Oil]);
+        let a = ItemBitSet::from(&[Item::IronOre, Item::CopperOre, Item::CateriumOre]);
+        let b = ItemBitSet::from(&[Item::IronOre, Item::Water, Item::Oil]);
 
         let merged = a.union(&b);
         assert_eq!(merged.len(), 5);
         assert_eq!(
             merged,
-            construct_bit_set(&[
+            ItemBitSet::from(&[
                 Item::IronOre,
                 Item::CopperOre,
                 Item::CateriumOre,
@@ -122,20 +123,20 @@ mod test {
 
     #[test]
     fn test_is_subset_of() {
-        let bit_set = construct_bit_set(&[Item::IronOre, Item::CopperOre, Item::CateriumOre]);
+        let bit_set = ItemBitSet::from(&[Item::IronOre, Item::CopperOre, Item::CateriumOre]);
 
         assert!(bit_set.is_subset_of(&bit_set));
-        assert!(construct_bit_set(&[Item::IronOre]).is_subset_of(&bit_set));
-        assert!(construct_bit_set(&[Item::CopperOre]).is_subset_of(&bit_set));
-        assert!(construct_bit_set(&[Item::CateriumOre]).is_subset_of(&bit_set));
-        assert!(construct_bit_set(&[Item::IronOre, Item::CateriumOre]).is_subset_of(&bit_set));
-        assert!(construct_bit_set(&[Item::IronOre, Item::CopperOre]).is_subset_of(&bit_set));
-        assert!(construct_bit_set(&[Item::CopperOre, Item::CateriumOre]).is_subset_of(&bit_set));
+        assert!(ItemBitSet::from(&[Item::IronOre]).is_subset_of(&bit_set));
+        assert!(ItemBitSet::from(&[Item::CopperOre]).is_subset_of(&bit_set));
+        assert!(ItemBitSet::from(&[Item::CateriumOre]).is_subset_of(&bit_set));
+        assert!(ItemBitSet::from(&[Item::IronOre, Item::CateriumOre]).is_subset_of(&bit_set));
+        assert!(ItemBitSet::from(&[Item::IronOre, Item::CopperOre]).is_subset_of(&bit_set));
+        assert!(ItemBitSet::from(&[Item::CopperOre, Item::CateriumOre]).is_subset_of(&bit_set));
     }
 
     #[test]
     fn test_len() {
-        let mut bit_set = construct_bit_set(&[Item::IronOre, Item::CopperOre, Item::CateriumOre]);
+        let mut bit_set = ItemBitSet::from(&[Item::IronOre, Item::CopperOre, Item::CateriumOre]);
 
         assert_eq!(bit_set.len(), 3);
 
@@ -148,7 +149,7 @@ mod test {
 
     #[test]
     fn test_contains() {
-        let bit_set = construct_bit_set(&[Item::IronOre, Item::CopperOre, Item::CateriumOre]);
+        let bit_set = ItemBitSet::from(&[Item::IronOre, Item::CopperOre, Item::CateriumOre]);
 
         assert!(bit_set.contains(Item::IronOre));
         assert!(bit_set.contains(Item::CopperOre));
@@ -164,9 +165,16 @@ mod test {
         assert!(!bit_set.contains(Item::Limestone));
     }
 
-    fn construct_bit_set(items: &[Item]) -> ItemBitSet {
-        let mut bit_set = ItemBitSet::default();
-        items.iter().for_each(|item| bit_set.add(*item));
-        bit_set
+    #[test]
+    fn test_unique_bitmask() {
+        let items: Vec<Item> = DEFAULT_LIMITS
+            .iter()
+            .map(|(item, _)| item)
+            .copied()
+            .collect();
+        let bit_set = ItemBitSet::from(&items);
+
+        assert_eq!(bit_set.len(), items.len());
+        assert_eq!(bit_set.0, (1 << items.len()) - 1);
     }
 }

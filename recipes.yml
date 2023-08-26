@@ -2,6 +2,8 @@ by_product_blacklist:
   - Empty Canister
   - Empty Fluid Tank
   - Water
+  - Oil
+  - Nitrogen Gas
 recipes:
   #
   # Tier 1 + 2
@@ -587,9 +589,9 @@ recipes:
   - name: Packaged Fuel
     alternate: false
     inputs:
+      - Fuel : 2
       - Empty Canister: 2
     outputs:
-      - Fuel : 2
       - Packaged Fuel: 2
     craft_time: 3
     machine: Packager
@@ -840,7 +842,7 @@ recipes:
     craft_time: 4
     machine: Constructor
   - name: Coated Iron Canister
-    alternate: false
+    alternate: true
     inputs:
       - Iron Plate: 2
       - Copper Sheet: 1
