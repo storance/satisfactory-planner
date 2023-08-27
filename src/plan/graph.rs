@@ -1,9 +1,12 @@
-use petgraph::stable_graph::StableDiGraph;
-use petgraph::{dot::Dot, graph::NodeIndex};
-
 use crate::{
     game::{Item, ItemValuePair, Recipe},
     utils::round_f64,
+};
+use petgraph::{dot::Dot, graph::NodeIndex};
+use petgraph::{
+    stable_graph::{EdgeIndex, StableDiGraph},
+    visit::EdgeRef,
+    Direction::Incoming,
 };
 use std::fmt;
 
@@ -21,20 +24,7 @@ pub enum NodeValue<'a> {
     Production(Production<'a>),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub struct NodeEdge {
-    pub value: ItemValuePair,
-    pub order: u32,
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct ScoredNodeValue<'a> {
-    pub node: NodeValue<'a>,
-    pub score: f64,
-}
-
 pub type GraphType<'a> = StableDiGraph<NodeValue<'a>, NodeEdge>;
-pub type ScoredGraphType<'a> = StableDiGraph<ScoredNodeValue<'a>, ItemValuePair>;
 
 #[allow(dead_code)]
 impl<'a> NodeValue<'a> {
@@ -170,64 +160,25 @@ impl<'a> fmt::Display for NodeValue<'a> {
     }
 }
 
-#[allow(dead_code)]
-impl<'a> ScoredNodeValue<'a> {
-    pub fn new_input(input: ItemValuePair) -> Self {
-        Self::from(NodeValue::new_input(input))
-    }
-
-    pub fn new_output(output: ItemValuePair) -> Self {
-        Self::from(NodeValue::new_output(output))
-    }
-    pub fn new_by_product(output: ItemValuePair) -> Self {
-        Self::from(NodeValue::new_by_product(output))
-    }
-
-    pub fn new_production(recipe: &'a Recipe, machine_count: f64) -> Self {
-        Self::from(NodeValue::new_production(recipe, machine_count))
-    }
-
-    pub fn is_input(&self) -> bool {
-        self.node.is_input()
-    }
-
-    pub fn is_output(&self) -> bool {
-        self.node.is_output()
-    }
-
-    pub fn is_production(&self) -> bool {
-        self.node.is_production()
-    }
-
-    pub fn is_by_product(&self) -> bool {
-        self.node.is_by_product()
-    }
-}
-
-impl<'a> From<ScoredNodeValue<'a>> for NodeValue<'a> {
-    fn from(value: ScoredNodeValue<'a>) -> Self {
-        value.node
-    }
-}
-
-impl<'a> fmt::Display for ScoredNodeValue<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}\nScore: {}\n", self.node, round_f64(self.score, 3))
-    }
-}
-
-impl<'a> From<NodeValue<'a>> for ScoredNodeValue<'a> {
-    fn from(node: NodeValue<'a>) -> Self {
-        Self {
-            node,
-            score: f64::INFINITY,
-        }
-    }
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct NodeEdge {
+    pub value: ItemValuePair,
+    pub order: u32,
 }
 
 impl NodeEdge {
     pub fn new(value: ItemValuePair, order: u32) -> Self {
         Self { value, order }
+    }
+
+    #[inline]
+    pub fn item(&self) -> Item {
+        self.value.item
+    }
+
+    #[inline]
+    pub fn value(&self) -> f64 {
+        self.value.value
     }
 }
 
@@ -242,21 +193,30 @@ impl fmt::Display for NodeEdge {
     }
 }
 
-pub fn find_input_node(graph: &GraphType<'_>, item: Item) -> Option<NodeIndex> {
+pub fn find_input_node<E>(
+    graph: &StableDiGraph<NodeValue<'_>, E>,
+    item: Item,
+) -> Option<NodeIndex> {
     graph.node_indices().find(|i| match graph[*i] {
         NodeValue::Input(input) => item == input.item,
         _ => false,
     })
 }
 
-pub fn find_production_node(graph: &GraphType<'_>, recipe: &Recipe) -> Option<NodeIndex> {
+pub fn find_production_node<E>(
+    graph: &StableDiGraph<NodeValue<'_>, E>,
+    recipe: &Recipe,
+) -> Option<NodeIndex> {
     graph.node_indices().find(|i| match graph[*i] {
         NodeValue::Production(production) => production.recipe == recipe,
         _ => false,
     })
 }
 
-pub fn find_output_node(graph: &GraphType<'_>, item: Item) -> Option<NodeIndex> {
+pub fn find_output_node<E>(
+    graph: &StableDiGraph<NodeValue<'_>, E>,
+    item: Item,
+) -> Option<NodeIndex> {
     graph.node_indices().find(|i| match graph[*i] {
         NodeValue::Output(output) => item == output.item,
         _ => false,
@@ -264,50 +224,41 @@ pub fn find_output_node(graph: &GraphType<'_>, item: Item) -> Option<NodeIndex> 
 }
 
 #[allow(dead_code)]
-pub fn find_by_product_node(graph: &GraphType<'_>, item: Item) -> Option<NodeIndex> {
+pub fn find_by_product_node<E>(
+    graph: &StableDiGraph<NodeValue<'_>, E>,
+    item: Item,
+) -> Option<NodeIndex> {
     graph.node_indices().find(|i| match graph[*i] {
         NodeValue::ByProduct(output) => item == output.item,
         _ => false,
     })
 }
 
-pub fn print_graph(graph: &GraphType) {
+pub fn find_by_product_child<E>(
+    node_index: NodeIndex,
+    graph: &StableDiGraph<NodeValue, E>,
+) -> (EdgeIndex, NodeIndex) {
+    assert!(graph[node_index].is_by_product());
+
+    let edge = graph
+        .edges_directed(node_index, Incoming)
+        .next()
+        .unwrap_or_else(|| {
+            panic!(
+                "ByProduct node {:?} is missing it's Production node child",
+                graph[node_index]
+            )
+        });
+    (edge.id(), edge.source())
+}
+
+pub fn print_graph<E: fmt::Display>(graph: &StableDiGraph<NodeValue<'_>, E>) {
     println!(
         "{}",
         format!(
             "{}",
             Dot::with_attr_getters(&graph, &[], &|_, _| String::new(), &|_, n| {
                 let color = match n.1 {
-                    NodeValue::Input(input) => {
-                        if input.item.is_extractable() {
-                            "lightslategray"
-                        } else {
-                            "peru"
-                        }
-                    }
-                    NodeValue::Output(..) => "mediumseagreen",
-                    NodeValue::ByProduct(..) => "cornflowerblue",
-                    NodeValue::Production(..) => "darkorange",
-                };
-
-                format!(
-                    "style=\"solid,filled\" shape=\"box\" fontcolor=\"white\" color=\"{}\"",
-                    color
-                )
-            })
-        )
-        .replace("\\l", "\\n")
-    );
-}
-
-#[allow(dead_code)]
-pub fn print_scored_graph(graph: &ScoredGraphType) {
-    println!(
-        "{}",
-        format!(
-            "{}",
-            Dot::with_attr_getters(&graph, &[], &|_, _| String::new(), &|_, n| {
-                let color = match n.1.node {
                     NodeValue::Input(input) => {
                         if input.item.is_extractable() {
                             "lightslategray"

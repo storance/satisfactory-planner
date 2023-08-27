@@ -7,4 +7,4 @@ pub mod recipe;
 pub use item::Item;
 pub use item_value_pair::ItemValuePair;
 pub use machine::{Machine, MachineIO};
-pub use recipe::{Recipe, RecipeIO};
+pub use recipe::{Recipe, RecipeDatabase};

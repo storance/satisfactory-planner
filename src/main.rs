@@ -5,16 +5,17 @@ extern crate serde;
 extern crate serde_yaml;
 extern crate thiserror;
 
-use crate::game::{Item, Machine, Recipe};
-use crate::plan::{solve, PlanConfig};
-use plan::print_graph;
+use crate::{
+    game::{Item, Machine, RecipeDatabase},
+    plan::{print_graph, solve, PlanConfig},
+};
 
 mod game;
 mod plan;
 mod utils;
 
 fn main() {
-    let recipes = Recipe::load_from_file("recipes.yml").unwrap_or_else(|e| {
+    let recipes = RecipeDatabase::from_file("recipes.yml").unwrap_or_else(|e| {
         panic!("Failed to load recipes: {}", e);
     });
 
@@ -25,6 +26,9 @@ fn main() {
     let graph = solve(&plan).unwrap_or_else(|e| {
         panic!("Failed to solve plan: {}", e);
     });
+
+    /*let mut graph = ScoredGraph::new(&plan);
+    graph.build();*/
 
     print_graph(&graph);
 }
