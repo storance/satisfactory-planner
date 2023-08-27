@@ -9,7 +9,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
-      - uses: mbrobbel/rustfmt-check@master
+      - uses: LoliGothick/rustfmt-check@master
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          mode: review
