@@ -552,7 +552,7 @@ recipes:
     craft_time: 6
     machine: Refinery
   - name: Residual Fuel
-    alternate: true
+    alternate: false
     inputs:
       - Heavy Oil Residue: 6
     outputs:

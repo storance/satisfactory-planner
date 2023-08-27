@@ -2,8 +2,12 @@ use crate::{
     game::{Item, ItemValuePair, Recipe},
     utils::round_f64,
 };
-use petgraph::stable_graph::StableDiGraph;
 use petgraph::{dot::Dot, graph::NodeIndex};
+use petgraph::{
+    stable_graph::{EdgeIndex, StableDiGraph},
+    visit::EdgeRef,
+    Direction::Incoming,
+};
 use std::fmt;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -228,6 +232,24 @@ pub fn find_by_product_node<E>(
         NodeValue::ByProduct(output) => item == output.item,
         _ => false,
     })
+}
+
+pub fn find_by_product_child<E>(
+    node_index: NodeIndex,
+    graph: &StableDiGraph<NodeValue, E>,
+) -> (EdgeIndex, NodeIndex) {
+    assert!(graph[node_index].is_by_product());
+
+    let edge = graph
+        .edges_directed(node_index, Incoming)
+        .next()
+        .unwrap_or_else(|| {
+            panic!(
+                "ByProduct node {:?} is missing it's Production node child",
+                graph[node_index]
+            )
+        });
+    (edge.id(), edge.source())
 }
 
 pub fn print_graph<E: fmt::Display>(graph: &StableDiGraph<NodeValue<'_>, E>) {

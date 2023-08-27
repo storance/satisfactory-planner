@@ -1,17 +1,19 @@
-use crate::game::{Item, ItemValuePair, Recipe};
-use crate::plan::{find_production_node, NodeValue, PlanConfig};
-use crate::utils::EPSILON;
 use petgraph::{
     stable_graph::{EdgeIndex, NodeIndex},
     visit::EdgeRef,
-    Direction::Incoming,
+    Direction::{Incoming, Outgoing},
 };
 use std::collections::HashMap;
 use thiserror::Error;
 
 use super::{
-    find_by_product_node, find_input_node, find_output_node, GraphType, NodeEdge, PathChain,
-    Production, ScoredGraph,
+    find_by_product_child, find_by_product_node, find_input_node, find_output_node, GraphType,
+    NodeEdge, PathChain, Production, ScoredGraph,
+};
+use crate::{
+    game::{Item, ItemValuePair, Recipe},
+    plan::{find_production_node, NodeValue, PlanConfig},
+    utils::EPSILON,
 };
 
 #[derive(Error, Debug)]
@@ -91,6 +93,7 @@ impl<'a> Solver<'a> {
         for node in outputs {
             self.merge_optimal_path(node, &mut graph)?;
         }
+        self.cleanup_by_product_nodes(&mut graph);
 
         Ok(graph)
     }
@@ -112,7 +115,7 @@ impl<'a> Solver<'a> {
             NodeValue::Production(production) => {
                 self.merge_production_node(node, production, graph)
             }
-            NodeValue::ByProduct(..) => todo!(),
+            NodeValue::ByProduct(..) => self.merge_by_product_node(node, graph),
         }
     }
 
@@ -218,34 +221,6 @@ impl<'a> Solver<'a> {
         let reduced_output = recipe_output * (machine_count - min_machine_count);
         self.propagate_reduction(node_index, reduced_output, graph);
 
-        for (order, (edge_index, by_product_index)) in self
-            .scored_graph
-            .production_by_products(node.index, &node.chain)
-            .iter()
-            .enumerate()
-        {
-            if self.scored_graph.graph[*by_product_index].is_by_product() {
-                let edge_weight = &self.scored_graph[*edge_index];
-
-                let recipe_output = *production
-                    .recipe
-                    .find_output_by_item(edge_weight.item())
-                    .unwrap();
-                let child_node = MergeNode::new(
-                    *by_product_index,
-                    edge_weight.chain.clone(),
-                    recipe_output * min_machine_count,
-                );
-                let new_index = self.merge_by_product_node(child_node, graph);
-                Self::create_or_update_edge(
-                    node_index,
-                    new_index,
-                    NodeEdge::new(recipe_output * min_machine_count, order as u32),
-                    graph,
-                );
-            }
-        }
-
         Ok((
             node_index,
             node.desired_output - (recipe_output * min_machine_count),
@@ -281,14 +256,50 @@ impl<'a> Solver<'a> {
         (new_children, desired_output - remaining_output)
     }
 
-    fn merge_by_product_node(&mut self, node: MergeNode, graph: &mut GraphType<'a>) -> NodeIndex {
-        match find_by_product_node(graph, node.item()) {
-            Some(existing_index) => {
-                *graph[existing_index].as_by_product_mut() += node.desired_output;
-                existing_index
+    fn merge_by_product_node(
+        &mut self,
+        node: MergeNode,
+        graph: &mut GraphType<'a>,
+    ) -> SolverResult<(NodeIndex, ItemValuePair)> {
+        let (_, prod_node_index) = find_by_product_child(node.index, &self.scored_graph.graph);
+        let recipe = self.scored_graph[prod_node_index].as_production().recipe;
+        let recipe_output = recipe.find_output_by_item(node.item()).unwrap();
+
+        let desired_output = if let Some(index) = find_production_node(graph, recipe) {
+            let machine_count = graph[index].as_production().machine_count;
+            let current_output = *recipe_output * machine_count;
+            if current_output >= node.desired_output {
+                ItemValuePair::new(node.item(), 0.0)
+            } else {
+                node.desired_output - current_output
             }
-            None => graph.add_node(NodeValue::new_by_product(node.desired_output)),
+        } else {
+            node.desired_output
+        };
+
+        let production_node = MergeNode::new(prod_node_index, node.chain, desired_output);
+        let (new_prod_index, leftover_output) = self.merge_optimal_path(production_node, graph)?;
+        let machine_count = graph[new_prod_index].as_production().machine_count;
+
+        let mut by_product_index = None;
+        for output in &recipe.outputs {
+            let output_value = *output * machine_count;
+
+            let node_index = match find_by_product_node(graph, output.item) {
+                Some(existing_index) => {
+                    *graph[existing_index].as_by_product_mut() = output_value;
+                    existing_index
+                }
+                None => graph.add_node(NodeValue::new_by_product(output_value)),
+            };
+
+            graph.update_edge(new_prod_index, node_index, NodeEdge::new(output_value, 0));
+            if output.item == desired_output.item {
+                by_product_index = Some(node_index);
+            }
         }
+
+        Ok((by_product_index.unwrap(), leftover_output))
     }
 
     fn propagate_reduction(
@@ -302,27 +313,27 @@ impl<'a> Solver<'a> {
         }
 
         match graph[node_index] {
-            NodeValue::Input(input) => {
-                self.propagate_reduction_input_node(input, node_index, amount, graph)
-            }
+            NodeValue::Input(..) => self.propagate_reduction_input_node(node_index, amount, graph),
             NodeValue::Production(..) => {
                 self.propagate_reduction_production_node(node_index, amount, graph)
             }
+            NodeValue::ByProduct(..) => {
+                self.propagate_reduction_by_product_node(node_index, amount, graph)
+            }
             _ => {
-                panic!("Output and ByProduct nodes can not be reduced");
+                panic!("Output nodes can not be reduced");
             }
         }
     }
 
     fn propagate_reduction_input_node(
         &mut self,
-        input: ItemValuePair,
         node_index: NodeIndex,
         amount: ItemValuePair,
         graph: &mut GraphType<'_>,
     ) -> bool {
-        assert!(input.item == amount.item);
-        let new_value = f64::max(0.0, (input - amount).value);
+        let input = graph[node_index].as_input();
+        let new_value = f64::max(0.0, (*input - amount).value);
 
         self.update_limit(input.item, input.value - new_value);
         if new_value < EPSILON {
@@ -398,6 +409,21 @@ impl<'a> Solver<'a> {
         }
     }
 
+    #[allow(dead_code)]
+    fn propagate_reduction_by_product_node(
+        &mut self,
+        _node_index: NodeIndex,
+        _amount: ItemValuePair,
+        _graph: &mut GraphType<'_>,
+    ) -> bool {
+        // find production node
+
+        // propagate to production node
+
+        // update all by product nodes
+        false
+    }
+
     fn create_or_update_output_node(input: ItemValuePair, graph: &mut GraphType) -> NodeIndex {
         match find_output_node(graph, input.item) {
             Some(existing_index) => {
@@ -435,6 +461,41 @@ impl<'a> Solver<'a> {
             graph.add_edge(child_index, parent_index, weight);
         }
     }
+
+    fn cleanup_by_product_nodes(&self, graph: &mut GraphType<'a>) {
+        let by_product_nodes: Vec<NodeIndex> = graph
+            .node_indices()
+            .filter(|i| graph[*i].is_by_product())
+            .collect();
+
+        by_product_nodes
+            .iter()
+            .for_each(|i| self.cleanup_by_product(*i, graph));
+    }
+
+    fn cleanup_by_product(&self, node_index: NodeIndex, graph: &mut GraphType<'a>) {
+        let (_, prod_index) = find_by_product_child(node_index, graph);
+
+        let mut used_output: f64 = 0.0;
+        let mut walker = graph.neighbors_directed(node_index, Outgoing).detach();
+
+        while let Some((e, i)) = walker.next(graph) {
+            let weight = graph[e];
+            used_output += weight.value();
+
+            // move the edge to go directly from the parent to the production node
+            graph.add_edge(prod_index, i, weight);
+            graph.remove_edge(e);
+        }
+
+        *graph[node_index].as_by_product_mut() -= used_output;
+        let unused_output = graph[node_index].as_by_product();
+        if unused_output.value.abs() < EPSILON {
+            graph.remove_node(node_index);
+        } else {
+            graph.update_edge(prod_index, node_index, NodeEdge::new(*unused_output, 0));
+        }
+    }
 }
 
 #[cfg(test)]
@@ -446,7 +507,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn single_production_node() {
+    fn test_single_production_node() {
         let mut recipes: Vec<Recipe> = build_recipe_db();
         recipes.retain_mut(|r| !r.alternate);
 
@@ -486,7 +547,7 @@ mod tests {
     }
 
     #[test]
-    fn single_production_node_optimizes_resources() {
+    fn test_single_production_node_optimizes_resources() {
         let recipes: Vec<Recipe> = build_recipe_db();
 
         let config = PlanConfig::new(
@@ -533,7 +594,7 @@ mod tests {
     }
 
     #[test]
-    fn multiple_outputs_graph() {
+    fn test_multiple_outputs() {
         let mut recipes: Vec<Recipe> = build_recipe_db();
         recipes.retain_mut(|r| !r.alternate);
 
@@ -607,7 +668,7 @@ mod tests {
     }
 
     #[test]
-    fn limited_inputs() {
+    fn test_input_limits() {
         let mut recipes = build_recipe_db();
         recipes.retain_mut(|r| !(r.name == "Pure Iron Ingot" || r.name == "Iron Alloy Ingot"));
 
@@ -736,116 +797,208 @@ mod tests {
         assert_graphs_equal(result.unwrap(), expected_graph);
     }
 
+    #[test]
+    fn test_multiple_output_recipes() {
+        let recipes = build_recipe_db();
+
+        let config = PlanConfig::new(
+            vec![
+                ItemValuePair::new(Item::Fuel, 180.0),
+                ItemValuePair::new(Item::Plastic, 30.0),
+            ],
+            recipes.clone().into(),
+        );
+
+        let mut expected_graph = GraphType::new();
+        let fuel_output_idx =
+            expected_graph.add_node(NodeValue::new_output(ItemValuePair::new(Item::Fuel, 180.0)));
+        let plastic_output_idx = expected_graph.add_node(NodeValue::new_output(
+            ItemValuePair::new(Item::Plastic, 30.0),
+        ));
+
+        let resin_by_prod_idx = expected_graph.add_node(NodeValue::new_by_product(
+            ItemValuePair::new(Item::PolymerResin, 45.0),
+        ));
+
+        let hor_idx = expected_graph.add_node(NodeValue::new_production(
+            find_recipe("Heavy Oil Residue", &recipes),
+            6.75,
+        ));
+
+        let plastic_idx = expected_graph.add_node(NodeValue::new_production(
+            find_recipe("Residual Plastic", &recipes),
+            1.5,
+        ));
+
+        let fuel_idx = expected_graph.add_node(NodeValue::new_production(
+            find_recipe("Residual Fuel", &recipes),
+            4.5,
+        ));
+
+        let oil_input_idx =
+            expected_graph.add_node(NodeValue::new_input(ItemValuePair::new(Item::Oil, 202.5)));
+
+        let water_idx =
+            expected_graph.add_node(NodeValue::new_input(ItemValuePair::new(Item::Water, 30.0)));
+
+        expected_graph.add_edge(
+            fuel_idx,
+            fuel_output_idx,
+            NodeEdge::new(ItemValuePair::new(Item::Fuel, 180.0), 0),
+        );
+
+        expected_graph.add_edge(
+            hor_idx,
+            fuel_idx,
+            NodeEdge::new(ItemValuePair::new(Item::HeavyOilResidue, 270.0), 0),
+        );
+
+        expected_graph.add_edge(
+            hor_idx,
+            resin_by_prod_idx,
+            NodeEdge::new(ItemValuePair::new(Item::PolymerResin, 45.0), 0),
+        );
+
+        expected_graph.add_edge(
+            hor_idx,
+            plastic_idx,
+            NodeEdge::new(ItemValuePair::new(Item::PolymerResin, 90.0), 0),
+        );
+
+        expected_graph.add_edge(
+            water_idx,
+            plastic_idx,
+            NodeEdge::new(ItemValuePair::new(Item::Water, 30.0), 0),
+        );
+
+        expected_graph.add_edge(
+            plastic_idx,
+            plastic_output_idx,
+            NodeEdge::new(ItemValuePair::new(Item::Plastic, 30.0), 0),
+        );
+
+        expected_graph.add_edge(
+            oil_input_idx,
+            hor_idx,
+            NodeEdge::new(ItemValuePair::new(Item::Oil, 202.5), 0),
+        );
+
+        let result = solve(&config);
+
+        assert!(result.is_ok(), "{:?}", result);
+        assert_graphs_equal(result.unwrap(), expected_graph);
+    }
+
     fn build_recipe_db() -> Vec<Recipe> {
         vec![
-            Recipe {
-                name: "Iron Ingot".into(),
-                alternate: false,
-                ficsmas: false,
-                inputs: vec![ItemValuePair::new(Item::IronOre, 30.0)],
-                outputs: vec![ItemValuePair::new(Item::IronIngot, 30.0)],
-                power_multiplier: 1.0,
-                machine: Machine::Smelter,
-            },
-            Recipe {
-                name: "Copper Ingot".into(),
-                alternate: false,
-                ficsmas: false,
-                inputs: vec![ItemValuePair::new(Item::CopperOre, 30.0)],
-                outputs: vec![ItemValuePair::new(Item::CopperIngot, 30.0)],
-                power_multiplier: 1.0,
-                machine: Machine::Smelter,
-            },
-            Recipe {
-                name: "Caterium Ingot".into(),
-                alternate: false,
-                ficsmas: false,
-                inputs: vec![ItemValuePair::new(Item::CateriumOre, 45.0)],
-                outputs: vec![ItemValuePair::new(Item::CateriumIngot, 15.0)],
-                power_multiplier: 1.0,
-                machine: Machine::Smelter,
-            },
-            Recipe {
-                name: "Pure Iron Ingot".into(),
-                alternate: true,
-                ficsmas: false,
-                inputs: vec![
+            Recipe::new_base(
+                "Iron Ingot".into(),
+                vec![ItemValuePair::new(Item::IronOre, 30.0)],
+                vec![ItemValuePair::new(Item::IronIngot, 30.0)],
+                Machine::Smelter,
+            ),
+            Recipe::new_base(
+                "Copper Ingot".into(),
+                vec![ItemValuePair::new(Item::CopperOre, 30.0)],
+                vec![ItemValuePair::new(Item::CopperIngot, 30.0)],
+                Machine::Smelter,
+            ),
+            Recipe::new_base(
+                "Caterium Ingot".into(),
+                vec![ItemValuePair::new(Item::CateriumOre, 45.0)],
+                vec![ItemValuePair::new(Item::CateriumIngot, 15.0)],
+                Machine::Smelter,
+            ),
+            Recipe::new_alt(
+                "Pure Iron Ingot".into(),
+                vec![
                     ItemValuePair::new(Item::IronOre, 35.0),
                     ItemValuePair::new(Item::Water, 20.0),
                 ],
-                outputs: vec![ItemValuePair::new(Item::IronIngot, 65.0)],
-                power_multiplier: 1.0,
-                machine: Machine::Refinery,
-            },
-            Recipe {
-                name: "Iron Alloy Ingot".into(),
-                alternate: true,
-                ficsmas: false,
-                inputs: vec![
+                vec![ItemValuePair::new(Item::IronIngot, 65.0)],
+                Machine::Refinery,
+            ),
+            Recipe::new_alt(
+                "Iron Alloy Ingot".into(),
+                vec![
                     ItemValuePair::new(Item::IronOre, 20.0),
                     ItemValuePair::new(Item::CopperOre, 20.0),
                 ],
-                outputs: vec![ItemValuePair::new(Item::IronIngot, 50.0)],
-                power_multiplier: 1.0,
-                machine: Machine::Foundry,
-            },
-            Recipe {
-                name: "Iron Plate".into(),
-                alternate: false,
-                ficsmas: false,
-                inputs: vec![ItemValuePair::new(Item::IronIngot, 30.0)],
-                outputs: vec![ItemValuePair::new(Item::IronPlate, 20.0)],
-                power_multiplier: 1.0,
-                machine: Machine::Constructor,
-            },
-            Recipe {
-                name: "Iron Rod".into(),
-                alternate: false,
-                ficsmas: false,
-                inputs: vec![ItemValuePair::new(Item::IronIngot, 15.0)],
-                outputs: vec![ItemValuePair::new(Item::IronRod, 15.0)],
-                power_multiplier: 1.0,
-                machine: Machine::Smelter,
-            },
-            Recipe {
-                name: "Wire".into(),
-                alternate: false,
-                ficsmas: false,
-                inputs: vec![ItemValuePair::new(Item::CopperIngot, 15.0)],
-                outputs: vec![ItemValuePair::new(Item::Wire, 30.0)],
-                power_multiplier: 1.0,
-                machine: Machine::Constructor,
-            },
-            Recipe {
-                name: "Iron Wire".into(),
-                alternate: true,
-                ficsmas: false,
-                inputs: vec![ItemValuePair::new(Item::IronIngot, 12.5)],
-                outputs: vec![ItemValuePair::new(Item::Wire, 22.5)],
-                power_multiplier: 1.0,
-                machine: Machine::Constructor,
-            },
-            Recipe {
-                name: "Caterium Wire".into(),
-                alternate: true,
-                ficsmas: false,
-                inputs: vec![ItemValuePair::new(Item::CateriumIngot, 15.0)],
-                outputs: vec![ItemValuePair::new(Item::Wire, 120.0)],
-                power_multiplier: 1.0,
-                machine: Machine::Constructor,
-            },
-            Recipe {
-                name: "Fused Wire".into(),
-                alternate: true,
-                ficsmas: false,
-                inputs: vec![
+                vec![ItemValuePair::new(Item::IronIngot, 50.0)],
+                Machine::Foundry,
+            ),
+            Recipe::new_base(
+                "Iron Plate".into(),
+                vec![ItemValuePair::new(Item::IronIngot, 30.0)],
+                vec![ItemValuePair::new(Item::IronPlate, 20.0)],
+                Machine::Constructor,
+            ),
+            Recipe::new_base(
+                "Iron Rod".into(),
+                vec![ItemValuePair::new(Item::IronIngot, 15.0)],
+                vec![ItemValuePair::new(Item::IronRod, 15.0)],
+                Machine::Smelter,
+            ),
+            Recipe::new_base(
+                "Wire".into(),
+                vec![ItemValuePair::new(Item::CopperIngot, 15.0)],
+                vec![ItemValuePair::new(Item::Wire, 30.0)],
+                Machine::Constructor,
+            ),
+            Recipe::new_alt(
+                "Iron Wire".into(),
+                vec![ItemValuePair::new(Item::IronIngot, 12.5)],
+                vec![ItemValuePair::new(Item::Wire, 22.5)],
+                Machine::Constructor,
+            ),
+            Recipe::new_alt(
+                "Caterium Wire".into(),
+                vec![ItemValuePair::new(Item::CateriumIngot, 15.0)],
+                vec![ItemValuePair::new(Item::Wire, 120.0)],
+                Machine::Constructor,
+            ),
+            Recipe::new_alt(
+                "Fused Wire".into(),
+                vec![
                     ItemValuePair::new(Item::CateriumIngot, 3.0),
                     ItemValuePair::new(Item::CopperIngot, 12.0),
                 ],
-                outputs: vec![ItemValuePair::new(Item::Wire, 90.0)],
-                power_multiplier: 1.0,
-                machine: Machine::Assembler,
-            },
+                vec![ItemValuePair::new(Item::Wire, 90.0)],
+                Machine::Assembler,
+            ),
+            Recipe::new_alt(
+                "Heavy Oil Residue".into(),
+                vec![ItemValuePair::new(Item::Oil, 30.0)],
+                vec![
+                    ItemValuePair::new(Item::HeavyOilResidue, 40.0),
+                    ItemValuePair::new(Item::PolymerResin, 20.0),
+                ],
+                Machine::Refinery,
+            ),
+            Recipe::new_base(
+                "Residual Plastic".into(),
+                vec![
+                    ItemValuePair::new(Item::PolymerResin, 60.0),
+                    ItemValuePair::new(Item::Water, 20.0),
+                ],
+                vec![ItemValuePair::new(Item::Plastic, 20.0)],
+                Machine::Refinery,
+            ),
+            Recipe::new_base(
+                "Residual Rubber".into(),
+                vec![
+                    ItemValuePair::new(Item::PolymerResin, 40.0),
+                    ItemValuePair::new(Item::Water, 20.0),
+                ],
+                vec![ItemValuePair::new(Item::Rubber, 20.0)],
+                Machine::Refinery,
+            ),
+            Recipe::new_base(
+                "Residual Fuel".into(),
+                vec![ItemValuePair::new(Item::HeavyOilResidue, 60.0)],
+                vec![ItemValuePair::new(Item::Fuel, 40.0)],
+                Machine::Refinery,
+            ),
         ]
     }
 
