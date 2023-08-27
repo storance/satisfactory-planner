@@ -161,7 +161,6 @@ impl<'a> Solver<'a> {
             if let Ok((child_index, leftover_output)) = self.merge_optimal_path(child_node, graph) {
                 new_children.push((child_index, remaining_output - leftover_output.value));
                 remaining_output = leftover_output;
-                remaining_output.normalize();
             }
         }
 
@@ -198,11 +197,33 @@ impl<'a> Solver<'a> {
             .production_children(node.index, &node.chain)
         {
             let recipe_input = *production.recipe.find_input_by_item(item).unwrap();
+            let desired_output = recipe_input * machine_count;
+            let mut new_children = Vec::new();
+            let mut remaining_output = desired_output;
 
-            let (new_children, actual_output) =
-                self.merge_production_children(recipe_input * machine_count, children, graph);
+            for (edge_index, child_index) in children {
+                if remaining_output.value <= 0.0 {
+                    break;
+                }
+
+                let child_node = MergeNode::new(
+                    child_index,
+                    self.scored_graph[edge_index].chain.clone(),
+                    remaining_output,
+                );
+                if let Ok((child_index, leftover_output)) =
+                    self.merge_optimal_path(child_node, graph)
+                {
+                    new_children.push((child_index, remaining_output - leftover_output.value));
+                    remaining_output = leftover_output;
+                }
+            }
+
             new_children_by_inputs.push(new_children);
-            min_machine_count = f64::min(min_machine_count, actual_output / recipe_input);
+            min_machine_count = f64::min(
+                min_machine_count,
+                (desired_output - remaining_output) / recipe_input,
+            );
         }
 
         let node_index =
@@ -225,35 +246,6 @@ impl<'a> Solver<'a> {
             node_index,
             node.desired_output - (recipe_output * min_machine_count),
         ))
-    }
-
-    fn merge_production_children(
-        &mut self,
-        desired_output: ItemValuePair,
-        children: Vec<(EdgeIndex, NodeIndex)>,
-        graph: &mut GraphType<'a>,
-    ) -> (Vec<(NodeIndex, ItemValuePair)>, ItemValuePair) {
-        let mut new_children: Vec<(NodeIndex, ItemValuePair)> = Vec::new();
-        let mut remaining_output = desired_output;
-
-        for (edge_index, child_index) in children {
-            if remaining_output.value <= 0.0 {
-                break;
-            }
-
-            let child_node = MergeNode::new(
-                child_index,
-                self.scored_graph[edge_index].chain.clone(),
-                remaining_output,
-            );
-            if let Ok((child_index, leftover_output)) = self.merge_optimal_path(child_node, graph) {
-                new_children.push((child_index, remaining_output - leftover_output.value));
-                remaining_output = leftover_output;
-                remaining_output.normalize();
-            }
-        }
-
-        (new_children, desired_output - remaining_output)
     }
 
     fn merge_by_product_node(
@@ -351,6 +343,10 @@ impl<'a> Solver<'a> {
         amount: ItemValuePair,
         graph: &mut GraphType<'_>,
     ) -> bool {
+        if amount.value < EPSILON {
+            return false;
+        }
+
         let production = *graph[node_index].as_production();
         let recipe_output = *production.recipe.find_output_by_item(amount.item).unwrap();
         let new_machine_count = f64::max(0.0, production.machine_count - amount / recipe_output);
@@ -365,14 +361,20 @@ impl<'a> Solver<'a> {
         }
 
         for (item, mut children) in children_by_items {
-            children.sort_by(|a, b| graph[a.0].order.cmp(&graph[b.0].order).reverse());
+            children.sort_unstable_by(|a, b| graph[a.0].order.cmp(&graph[b.0].order));
 
             let recipe_input = *production.recipe.find_input_by_item(item).unwrap();
-            self.propagate_reduction_production_children(
-                recipe_input * new_machine_count,
-                children,
-                graph,
-            );
+            let mut required_input = recipe_input * new_machine_count;
+            for (edge_index, child_index) in children {
+                required_input -= graph[edge_index].value;
+                if required_input.value < 0.0 {
+                    let reduce_amount = -required_input;
+                    required_input.value = 0.0;
+
+                    graph[edge_index].value -= reduce_amount;
+                    self.propagate_reduction(child_index, reduce_amount, graph);
+                }
+            }
         }
 
         if new_machine_count <= 0.0 {
@@ -383,45 +385,59 @@ impl<'a> Solver<'a> {
         }
     }
 
-    fn propagate_reduction_production_children(
-        &mut self,
-        desired_input: ItemValuePair,
-        children: Vec<(EdgeIndex, NodeIndex)>,
-        graph: &mut GraphType,
-    ) {
-        let total_output: f64 = children.iter().map(|e| graph[e.0].value()).sum();
-
-        let mut total_delta = total_output - desired_input.value;
-        for (edge_index, child_index) in children {
-            if total_delta < EPSILON {
-                break;
-            }
-
-            let reduce_amount = total_delta.min(graph[edge_index].value());
-            total_delta = f64::max(0.0, total_delta - reduce_amount);
-
-            graph[edge_index].value -= reduce_amount;
-            self.propagate_reduction(
-                child_index,
-                ItemValuePair::new(desired_input.item, reduce_amount),
-                graph,
-            );
-        }
-    }
-
     #[allow(dead_code)]
     fn propagate_reduction_by_product_node(
         &mut self,
-        _node_index: NodeIndex,
-        _amount: ItemValuePair,
-        _graph: &mut GraphType<'_>,
+        node_index: NodeIndex,
+        amount: ItemValuePair,
+        graph: &mut GraphType<'_>,
     ) -> bool {
-        // find production node
+        if amount.value < EPSILON {
+            return false;
+        }
 
-        // propagate to production node
+        let (_, production_idx) = find_by_product_child(node_index, graph);
+        let recipe = graph[production_idx].as_production().recipe;
+        let machine_count = graph[production_idx].as_production().machine_count;
 
-        // update all by product nodes
-        false
+        let mut by_product_nodes = Vec::new();
+        let mut required_machine_count: f64 = 0.0;
+        for edge in graph.edges_directed(production_idx, Outgoing) {
+            let item = graph[edge.target()].as_by_product().item;
+            let recipe_output = recipe.find_output_by_item(item).unwrap();
+
+            by_product_nodes.push((edge.id(), edge.target(), recipe_output));
+            if edge.target() == node_index {
+                continue;
+            }
+
+            let used_output: f64 = graph
+                .edges_directed(edge.target(), Outgoing)
+                .map(|e| e.weight().value())
+                .sum();
+            required_machine_count = required_machine_count.min(used_output / recipe_output.value);
+        }
+
+        let recipe_output = recipe.find_output_by_item(amount.item).unwrap();
+        let new_machine_count =
+            required_machine_count.max(machine_count - (amount / *recipe_output));
+        let new_amount = *recipe_output * (machine_count - new_machine_count);
+
+        if self.propagate_reduction_production_node(production_idx, new_amount, graph) {
+            for (_, idx, _) in by_product_nodes {
+                graph.remove_node(idx);
+            }
+
+            true
+        } else {
+            for (e_idx, n_idx, recipe_output) in by_product_nodes {
+                let new_amount = *recipe_output * new_machine_count;
+                graph[e_idx].value = new_amount;
+                *graph[n_idx].as_by_product_mut() = new_amount;
+            }
+
+            false
+        }
     }
 
     fn create_or_update_output_node(input: ItemValuePair, graph: &mut GraphType) -> NodeIndex {

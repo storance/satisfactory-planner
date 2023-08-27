@@ -20,12 +20,6 @@ impl ItemValuePair {
         Self { item, value }
     }
 
-    pub fn normalize(&mut self) {
-        if self.value.abs() < EPSILON {
-            self.value = 0.0;
-        }
-    }
-
     pub fn is_zero(&self) -> bool {
         self.value.abs() < EPSILON
     }
