@@ -47,6 +47,12 @@ pub struct Recipe {
 
 #[allow(dead_code)]
 impl Recipe {
+    pub fn average_mw(&self, clock_speed: FloatType) -> FloatType {
+        self.building
+            .power_consumption
+            .average_mw(self, clock_speed)
+    }
+
     pub fn find_input_by_item(&self, item: &Item) -> Option<&ItemValuePair> {
         self.inputs.iter().find(|output| *output.item == *item)
     }

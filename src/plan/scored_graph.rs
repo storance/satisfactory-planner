@@ -12,7 +12,14 @@ use petgraph::{
     visit::EdgeRef,
     Direction::Incoming,
 };
-use std::{cmp::Ordering, collections::HashMap, fmt, hash::Hash, ops::Index, rc::Rc};
+use std::{
+    cmp::Ordering,
+    collections::HashMap,
+    fmt,
+    hash::Hash,
+    ops::{Add, Index},
+    rc::Rc,
+};
 
 pub type ScoredGraphType = StableDiGraph<NodeValue, ScoredNodeEdge>;
 pub type ChildrenByInput = Vec<(Rc<Item>, Vec<(EdgeIndex, NodeIndex)>)>;
@@ -26,15 +33,23 @@ pub struct PathChainGenerator(u32);
 #[derive(Debug, Clone)]
 pub struct ScoredNodeEdge {
     pub value: ItemValuePair,
-    pub score: FloatType,
+    pub score: Score,
     pub chain: PathChain,
+}
+
+#[derive(Debug, Default, Copy, Clone, PartialEq)]
+pub struct Score {
+    pub resource_score: FloatType,
+    pub power_score: FloatType,
+    pub floor_area_score: FloatType,
+    pub volume_score: FloatType,
 }
 
 #[derive(Debug, Clone)]
 pub struct OutputNodeScore {
     pub output: ItemValuePair,
     pub index: NodeIndex,
-    pub score: FloatType,
+    pub score: Score,
     pub unique_inputs: u8,
 }
 
@@ -83,7 +98,7 @@ impl ScoredNodeEdge {
     pub fn new(value: ItemValuePair, chain: PathChain) -> Self {
         Self {
             value,
-            score: FloatType::INFINITY,
+            score: Score::infinity(),
             chain,
         }
     }
@@ -96,7 +111,7 @@ impl fmt::Display for ScoredNodeEdge {
             "{}\n{} / min\nScore: {}\nChain: {}",
             self.value.item,
             round(self.value.value, 3),
-            round(self.score, 1),
+            self.score,
             self.chain
         )
     }
@@ -104,13 +119,106 @@ impl fmt::Display for ScoredNodeEdge {
 
 impl OutputNodeScore {
     #[inline]
-    fn new(output: ItemValuePair, index: NodeIndex, score: FloatType, unique_inputs: u8) -> Self {
+    fn new(output: ItemValuePair, index: NodeIndex, score: Score, unique_inputs: u8) -> Self {
         Self {
             output,
             index,
             score,
             unique_inputs,
         }
+    }
+}
+
+const RESOURCE_SCORE_SCALE_FACTOR: FloatType = 10_000.0;
+
+impl Score {
+    pub fn infinity() -> Self {
+        Self {
+            resource_score: FloatType::INFINITY,
+            power_score: FloatType::INFINITY,
+            floor_area_score: FloatType::INFINITY,
+            volume_score: FloatType::INFINITY,
+        }
+    }
+
+    pub fn for_input_node(input: &ItemValuePair, limit: FloatType) -> Self {
+        let resource_score = if limit == 0.0 || limit.is_infinite() {
+            0.0
+        } else {
+            input.value / limit * RESOURCE_SCORE_SCALE_FACTOR
+        };
+
+        Self {
+            resource_score,
+            power_score: 0.0,
+            floor_area_score: 0.0,
+            volume_score: 0.0,
+        }
+    }
+
+    pub fn for_production_node(recipe: &Recipe, machine_count: FloatType) -> Score {
+        let power_score = recipe.average_mw(100.0) * machine_count;
+        let floor_area_score = recipe.building.floor_area() * machine_count.ceil();
+        let volume_score = recipe.building.volume() * machine_count.ceil();
+
+        Self {
+            resource_score: 0.0,
+            power_score,
+            floor_area_score,
+            volume_score,
+        }
+    }
+}
+
+impl Eq for Score {}
+
+impl PartialOrd for Score {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match self.resource_score.partial_cmp(&other.resource_score) {
+            Some(Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self.power_score.partial_cmp(&other.power_score) {
+            Some(Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self.floor_area_score.partial_cmp(&other.floor_area_score) {
+            Some(Ordering::Equal) => {}
+            ord => return ord,
+        }
+        self.volume_score.partial_cmp(&other.volume_score)
+    }
+}
+
+impl Ord for Score {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+impl Add<Score> for Score {
+    type Output = Self;
+
+    fn add(self, rhs: Score) -> Self::Output {
+        Self {
+            resource_score: self.resource_score + rhs.resource_score,
+            power_score: self.power_score + rhs.power_score,
+            floor_area_score: self.floor_area_score + rhs.floor_area_score,
+            volume_score: self.volume_score + rhs.volume_score,
+        }
+    }
+}
+
+impl fmt::Display for Score {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "({}, {} MW, {} m^2, {} m^3)",
+            round(self.resource_score, 1),
+            round(self.power_score, 1),
+            round(self.floor_area_score, 1),
+            round(self.volume_score, 1)
+        )
     }
 }
 
@@ -139,9 +247,9 @@ impl<'a> ScoredGraph<'a> {
             let output = self.graph[node_index].as_output().clone();
             let mut child_walker = self.graph.neighbors_directed(node_index, Incoming).detach();
 
-            let mut score: FloatType = FloatType::INFINITY;
+            let mut score = Score::infinity();
             while let Some((edge_index, _)) = child_walker.next(&self.graph) {
-                score = score.min(self.score_edge(edge_index));
+                score = score.min(self.score_edge(edge_index, output.clone()));
             }
 
             let item_combinations = self.calc_input_combinations(
@@ -169,7 +277,7 @@ impl<'a> ScoredGraph<'a> {
                 ord => return ord,
             }
 
-            a.score.total_cmp(&b.score).reverse()
+            a.score.cmp(&b.score).reverse()
         });
     }
 
@@ -341,21 +449,20 @@ impl<'a> ScoredGraph<'a> {
         child_index
     }
 
-    pub fn score_edge(&mut self, edge_index: EdgeIndex) -> FloatType {
+    pub fn score_edge(&mut self, edge_index: EdgeIndex, output: ItemValuePair) -> Score {
         let (child_index, _parent_index) = self.graph.edge_endpoints(edge_index).unwrap();
-        let edge_weight = self.graph[edge_index].value.clone();
 
         let score = match self.graph[child_index] {
             NodeValue::ByProduct(..) => {
                 let (child_edge_index, _) = find_by_product_child(child_index, &self.graph);
-                self.score_edge(child_edge_index)
+                self.score_edge(child_edge_index, output)
             }
             NodeValue::Input(..) => {
-                if edge_weight.item.resource {
-                    let input_limit = self.config.game_db.get_resource_limit(&edge_weight.item);
-                    edge_weight.value / input_limit * 10000.0
+                if output.item.resource {
+                    let input_limit = self.config.game_db.get_resource_limit(&output.item);
+                    Score::for_input_node(&output, input_limit)
                 } else {
-                    0.0
+                    Score::default()
                 }
             }
             NodeValue::Production(..) => {
@@ -363,29 +470,32 @@ impl<'a> ScoredGraph<'a> {
                     .graph
                     .neighbors_directed(child_index, Incoming)
                     .detach();
-                let mut scores_by_input: HashMap<String, Vec<FloatType>> = HashMap::new();
+                let mut scores_by_input: HashMap<String, Vec<Score>> = HashMap::new();
                 while let Some((child_edge_index, _)) = child_walker.next(&self.graph) {
                     if !self.is_same_path(edge_index, child_edge_index) {
                         continue;
                     }
 
-                    let score = self.score_edge(child_edge_index);
+                    let score = self
+                        .score_edge(child_edge_index, self.graph[child_edge_index].value.clone());
                     scores_by_input
                         .entry(self.graph[child_edge_index].value.item.key.clone())
                         .or_default()
                         .push(score);
                 }
 
-                scores_by_input
-                    .values()
-                    .map(|scores| {
-                        scores
-                            .iter()
-                            .copied()
-                            .min_by(FloatType::total_cmp)
-                            .unwrap_or(FloatType::INFINITY)
-                    })
-                    .sum()
+                if scores_by_input.is_empty() {
+                    Score::infinity()
+                } else {
+                    let recipe = &self.graph[child_index].as_production().recipe;
+                    let recipe_output = recipe.find_output_by_item(&output.item).unwrap();
+                    let recipe_score =
+                        Score::for_production_node(recipe, output.ratio(recipe_output));
+                    scores_by_input
+                        .values()
+                        .map(|scores| scores.iter().copied().min().unwrap_or(Score::infinity()))
+                        .fold(recipe_score, |acc, e| acc + e)
+                }
             }
             NodeValue::Output(..) => panic!("Unexpectedly encountered an output node"),
         };
@@ -516,7 +626,7 @@ impl<'a> ScoredGraph<'a> {
             }
         }
 
-        children.sort_by(|a, b| self.graph[a.0].score.total_cmp(&self.graph[b.0].score));
+        children.sort_unstable_by(|a, b| self.graph[a.0].score.cmp(&self.graph[b.0].score));
         children
     }
 
@@ -544,7 +654,7 @@ impl<'a> ScoredGraph<'a> {
         let mut sorted_children: ChildrenByInput = Vec::new();
         for (item, mut children_for_item) in children_by_item {
             children_for_item
-                .sort_unstable_by(|a, b| self.graph[a.0].score.total_cmp(&self.graph[b.0].score));
+                .sort_unstable_by(|a, b| self.graph[a.0].score.cmp(&self.graph[b.0].score));
 
             sorted_children.push((item, children_for_item));
         }

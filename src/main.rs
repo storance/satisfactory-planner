@@ -27,9 +27,10 @@ fn main() {
     let graph = solve(&plan).unwrap_or_else(|e| {
         panic!("Failed to solve plan: {}", e);
     });
-
-    /*let mut graph = ScoredGraph::new(&plan);
-    graph.build();*/
-
     print_graph(&graph);
+
+    /*let mut graph = crate::plan::ScoredGraph::new(&plan);
+    graph.build();
+
+    print_graph(&graph.graph);*/
 }

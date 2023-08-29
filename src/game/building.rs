@@ -9,7 +9,7 @@ use crate::utils::FloatType;
 
 use super::Recipe;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum PowerConsumption {
     #[serde(rename = "fixed")]
@@ -22,7 +22,7 @@ pub enum PowerConsumption {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Dimensions {
     pub length_m: FloatType,
     pub width_m: FloatType,
@@ -36,6 +36,17 @@ pub struct Building {
     pub power_consumption: PowerConsumption,
     #[serde(default)]
     pub dimensions: Option<Dimensions>,
+}
+
+#[allow(dead_code)]
+impl Building {
+    pub fn volume(&self) -> FloatType {
+        self.dimensions.map(|d| d.volume()).unwrap_or(0.0)
+    }
+
+    pub fn floor_area(&self) -> FloatType {
+        self.dimensions.map(|d| d.floor_area()).unwrap_or(0.0)
+    }
 }
 
 impl fmt::Display for Building {

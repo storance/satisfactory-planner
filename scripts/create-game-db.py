@@ -53,6 +53,54 @@ RECIPES_FORCE_ALTERNATE = [
     'Recipe_Alternate_Turbofuel_C', 
 ]
 
+BUILDING_SIZES = {
+    'Desc_SmelterMk1_C': {
+        'width_m':  6,
+        'length_m': 9,
+        'height_m':  9,
+    },
+    'Desc_ConstructorMk1_C': {
+        'width_m':  7.9,
+        'length_m': 9.9,
+        'height_m':  8,
+    },
+    'Desc_AssemblerMk1_C': {
+        'width_m':  10,
+        'length_m': 15,
+        'height_m':  11,
+    },
+    'Desc_FoundryMk1_C': {
+        'width_m':  10,
+        'length_m': 9,
+        'height_m':  9,
+    },
+    'Desc_ManufacturerMk1_C': {
+        'width_m':  18,
+        'length_m': 20,
+        'height_m':  12,
+    },
+    'Desc_OilRefinery_C': {
+        'width_m':  10,
+        'length_m': 20,
+        'height_m':  31,
+    },
+    'Desc_Packager_C': {
+        'width_m':  8,
+        'length_m': 8,
+        'height_m':  12,
+    },
+    'Desc_Blender_C': {
+        'width_m':  18,
+        'length_m': 16,
+        'height_m':  15,
+    },
+    'Desc_HadronCollider_C': {
+        'width_m':  24,
+        'length_m': 38,
+        'height_m':  32,
+    },
+}
+
 def detect_encoding(file: str):
     detector = UniversalDetector()
     with open(file, 'rb') as f:
@@ -98,10 +146,12 @@ def parse_machine(definition: dict, game_db: dict):
         power['type'] = 'fixed'
         power['value_mw'] = int(float(definition['mPowerConsumption']))
     
+    building_key = definition['ClassName'].replace('Build_', 'Desc_')
     game_db['buildings'].append({
-        'key': definition['ClassName'],
+        'key': building_key,
         'name': definition['mDisplayName'],
-        'power_consumption' : power
+        'power_consumption' : power,
+        'dimensions' : BUILDING_SIZES.get(building_key)
     })
 
 def parse_recipe(definition: dict, game_db: dict):
@@ -111,6 +161,7 @@ def parse_recipe(definition: dict, game_db: dict):
     elif len(produces_in) > 1:
         raise ValueError(f"Recipe {definition['ClassName']} has multiple buildings: {produces_in}")
     
+    produces_in = [building.replace('Build_', 'Desc_') for building in produces_in]
     check_machine_exists(game_db, produces_in[0])
 
     recipe_key = definition['ClassName']
