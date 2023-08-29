@@ -376,8 +376,6 @@ impl<'a> ScoredGraph<'a> {
         assert!(recipe.outputs.len() > 1);
 
         let machine_count = recipe.calc_buildings_for_output(output).unwrap();
-        let next_chain = self.next_path(chain);
-
         let node_index = match find_production_node(&self.graph, &recipe) {
             Some(existing_index) => {
                 self.graph[existing_index].as_production_mut().machine_count += machine_count;
@@ -388,30 +386,37 @@ impl<'a> ScoredGraph<'a> {
                 .add_node(NodeValue::new_production(Rc::clone(&recipe), machine_count)),
         };
 
+        let to_by_product_chain = self.next_path(chain);
+        let to_production_chain = self.next_path(&to_by_product_chain);
+
         for recipe_output in &recipe.outputs {
             let by_product_parent_index = if recipe_output.item == output.item {
                 Some(parent_index)
             } else {
                 None
             };
-            self.create_by_product_node(
+            let by_product_idx = self.create_by_product_node(
                 by_product_parent_index,
-                node_index,
                 recipe_output.mul(machine_count),
-                &next_chain,
+                &to_by_product_chain,
+            );
+
+            self.graph.add_edge(
+                node_index,
+                by_product_idx,
+                ScoredNodeEdge::new(output.clone(), to_production_chain.clone()),
             );
         }
 
         for input in &recipe.inputs {
             let desired_output = input.mul(machine_count);
-            self.create_children(node_index, &desired_output, &next_chain);
+            self.create_children(node_index, &desired_output, &to_production_chain);
         }
     }
 
     pub fn create_by_product_node(
         &mut self,
         parent_idx: Option<NodeIndex>,
-        production_idx: NodeIndex,
         output: ItemValuePair,
         chain: &PathChain,
     ) -> NodeIndex {
@@ -432,13 +437,6 @@ impl<'a> ScoredGraph<'a> {
                 ScoredNodeEdge::new(output.clone(), chain.clone()),
             );
         }
-
-        let next_chain = self.next_path(chain);
-        self.graph.add_edge(
-            production_idx,
-            by_product_idx,
-            ScoredNodeEdge::new(output.clone(), next_chain),
-        );
 
         by_product_idx
     }
@@ -467,17 +465,15 @@ impl<'a> ScoredGraph<'a> {
                     .graph
                     .neighbors_directed(child_index, Incoming)
                     .detach();
-                let mut scores_by_input: HashMap<String, Vec<Score>> = HashMap::new();
+                let mut scores_by_input: HashMap<Rc<Item>, Vec<Score>> = HashMap::new();
                 while let Some(child_edge_index) = child_walker.next_edge(&self.graph) {
                     if !self.is_same_path(edge_index, child_edge_index) {
                         continue;
                     }
 
                     let score = self.score_edge(child_edge_index);
-                    scores_by_input
-                        .entry(self.graph[child_edge_index].value.item.key.clone())
-                        .or_default()
-                        .push(score);
+                    let item = Rc::clone(&self.graph[child_edge_index].value.item);
+                    scores_by_input.entry(item).or_default().push(score);
                 }
 
                 if scores_by_input.is_empty() {
