@@ -4,6 +4,7 @@ use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
+use std::path::Path;
 use std::rc::Rc;
 use thiserror::Error;
 
@@ -199,7 +200,7 @@ impl PlanConfig {
         }
     }
 
-    pub fn from_file(file_path: &str, game_db: &GameDatabase) -> anyhow::Result<Self> {
+    pub fn from_file<P: AsRef<Path>>(file_path: P, game_db: &GameDatabase) -> anyhow::Result<Self> {
         let file = File::open(file_path)?;
         let config: PlanConfigDefinition = serde_yaml::from_reader(file)?;
 

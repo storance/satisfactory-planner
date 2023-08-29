@@ -1,5 +1,6 @@
 [package]
 name = "satisfactory-planner"
+description = "Tool for generating production plans for Satisfactory"
 version = "0.1.0"
 edition = "2021"
 
@@ -15,3 +16,4 @@ petgraph = "0.6"
 anyhow = "1.0"
 indexmap = {version = "2.0", features = ["std", "serde"] }
 im = "15.1"
+clap = { version = "4.4.1", features = ["derive"] }
