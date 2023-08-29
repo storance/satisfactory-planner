@@ -37,7 +37,7 @@ struct GameDatabaseDefinition {
     items: Vec<Rc<Item>>,
     buildings: Vec<Rc<Building>>,
     recipes: Vec<RecipeDefinition>,
-    resource_limits: HashMap<String, f32>,
+    resource_limits: HashMap<String, FloatType>,
 }
 
 #[derive(Debug, Clone)]
@@ -46,7 +46,7 @@ pub struct GameDatabase {
     pub items: Vec<Rc<Item>>,
     pub buildings: Vec<Rc<Building>>,
     pub recipes: Vec<Rc<Recipe>>,
-    pub resource_limits: HashMap<Rc<Item>, f32>,
+    pub resource_limits: HashMap<Rc<Item>, FloatType>,
 }
 
 #[allow(dead_code)]

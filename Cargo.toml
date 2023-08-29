@@ -3,11 +3,15 @@ name = "satisfactory-planner"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+f64 = []
+
 [dependencies]
 thiserror = "1.0"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_yaml = "0.9"
+serde_json = "1.0"
 petgraph = "0.6"
 anyhow = "1.0"
 indexmap = {version = "2.0", features = ["std", "serde"] }
-serde_json = "1.0"
+im = "15.1"

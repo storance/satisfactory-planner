@@ -76,7 +76,7 @@ impl<'a> Solver<'a> {
             .scored_graph
             .output_nodes
             .iter()
-            .map(|output| MergeNode::new(output.index, PathChain::empty(), output.output.clone()))
+            .map(|output| MergeNode::new(output.index, PathChain::default(), output.output.clone()))
             .collect();
 
         for node in outputs {

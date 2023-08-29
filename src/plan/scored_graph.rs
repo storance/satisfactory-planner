@@ -6,41 +6,61 @@ use crate::{
     game::{Item, ItemValuePair, Recipe},
     utils::{round, FloatType},
 };
+use im::Vector;
 use petgraph::{
     stable_graph::{EdgeIndex, NodeIndex, StableDiGraph},
     visit::EdgeRef,
     Direction::Incoming,
 };
-use std::{cmp::Ordering, collections::HashMap, fmt, hash::Hash, ops::Index, rc::Rc, sync::atomic};
+use std::{cmp::Ordering, collections::HashMap, fmt, hash::Hash, ops::Index, rc::Rc};
 
 pub type ScoredGraphType = StableDiGraph<NodeValue, ScoredNodeEdge>;
 pub type ChildrenByInput = Vec<(Rc<Item>, Vec<(EdgeIndex, NodeIndex)>)>;
 
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
+pub struct PathChain(Vector<u32>);
+
+#[derive(Debug, Default)]
+pub struct PathChainGenerator(u32);
+
 #[derive(Debug, Clone)]
-pub struct PathChain(Vec<u32>);
+pub struct ScoredNodeEdge {
+    pub value: ItemValuePair,
+    pub score: FloatType,
+    pub chain: PathChain,
+}
 
-static ID_GENERATOR: atomic::AtomicU32 = atomic::AtomicU32::new(0);
+#[derive(Debug, Clone)]
+pub struct OutputNodeScore {
+    pub output: ItemValuePair,
+    pub index: NodeIndex,
+    pub score: FloatType,
+    pub unique_inputs: u8,
+}
 
-#[allow(dead_code)]
+#[derive(Debug)]
+pub struct ScoredGraph<'a> {
+    pub config: &'a PlanConfig,
+    pub graph: ScoredGraphType,
+    pub path_chain_gen: PathChainGenerator,
+    pub unique_inputs_by_item: HashMap<Rc<Item>, u8>,
+    pub output_nodes: Vec<OutputNodeScore>,
+}
+
+impl PathChainGenerator {
+    pub fn next(&mut self, chain: &PathChain) -> PathChain {
+        let id = self.0;
+        self.0 += 1;
+
+        let mut new_chain = chain.0.clone();
+        new_chain.push_back(id);
+        PathChain(new_chain)
+    }
+}
+
 impl PathChain {
-    pub fn empty() -> Self {
-        Self(Vec::new())
-    }
-
-    pub fn next(&self) -> Self {
-        let mut chain = self.0.clone();
-        let id = ID_GENERATOR.fetch_add(1, atomic::Ordering::Relaxed);
-        chain.push(id);
-
-        Self(chain)
-    }
-
     pub fn is_subset_of(&self, other: &Self) -> bool {
-        other.0.starts_with(self.0.as_slice())
-    }
-
-    pub fn id(&self) -> u32 {
-        self.0.last().copied().unwrap()
+        other.0.len() >= self.0.len() && other.0.iter().zip(self.0.iter()).all(|(a, b)| a == b)
     }
 }
 
@@ -56,13 +76,6 @@ impl fmt::Display for PathChain {
                 .join(",")
         )
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct ScoredNodeEdge {
-    pub value: ItemValuePair,
-    pub score: FloatType,
-    pub chain: PathChain,
 }
 
 impl ScoredNodeEdge {
@@ -89,14 +102,6 @@ impl fmt::Display for ScoredNodeEdge {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct OutputNodeScore {
-    pub output: ItemValuePair,
-    pub index: NodeIndex,
-    pub score: FloatType,
-    pub unique_inputs: u8,
-}
-
 impl OutputNodeScore {
     #[inline]
     fn new(output: ItemValuePair, index: NodeIndex, score: FloatType, unique_inputs: u8) -> Self {
@@ -109,14 +114,6 @@ impl OutputNodeScore {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ScoredGraph<'a> {
-    pub config: &'a PlanConfig,
-    pub graph: ScoredGraphType,
-    pub unique_inputs_by_item: HashMap<Rc<Item>, u8>,
-    pub output_nodes: Vec<OutputNodeScore>,
-}
-
 impl<'a> ScoredGraph<'a> {
     #[inline]
     pub fn new(config: &'a PlanConfig) -> Self {
@@ -124,6 +121,7 @@ impl<'a> ScoredGraph<'a> {
             config,
             graph: ScoredGraphType::new(),
             unique_inputs_by_item: HashMap::new(),
+            path_chain_gen: PathChainGenerator::default(),
             output_nodes: Vec::new(),
         }
     }
@@ -133,7 +131,7 @@ impl<'a> ScoredGraph<'a> {
         for output in &self.config.outputs {
             let node_index = self.graph.add_node(NodeValue::new_output(output.clone()));
             output_indices.push(node_index);
-            self.create_children(node_index, output, &PathChain::empty());
+            self.create_children(node_index, output, &PathChain::default());
         }
 
         let mut cached_inputs = HashMap::new();
@@ -149,7 +147,7 @@ impl<'a> ScoredGraph<'a> {
             let item_combinations = self.calc_input_combinations(
                 node_index,
                 Rc::clone(&output.item),
-                &PathChain::empty(),
+                &PathChain::default(),
                 &mut cached_inputs,
             );
             self.output_nodes.push(OutputNodeScore::new(
@@ -206,10 +204,11 @@ impl<'a> ScoredGraph<'a> {
             None => self.graph.add_node(NodeValue::new_input(output.clone())),
         };
 
+        let next_chain = self.next_path(chain);
         self.graph.add_edge(
             node_index,
             parent_index,
-            ScoredNodeEdge::new(output.clone(), chain.next()),
+            ScoredNodeEdge::new(output.clone(), next_chain),
         );
     }
 
@@ -238,7 +237,7 @@ impl<'a> ScoredGraph<'a> {
 
         let recipe_output = recipe.find_output_by_item(&output.item).unwrap();
         let machine_count = output.ratio(recipe_output);
-        let next_chain = chain.next();
+        let next_chain = self.next_path(chain);
 
         let node_index = match find_production_node(&self.graph, &recipe) {
             Some(existing_index) => {
@@ -272,7 +271,7 @@ impl<'a> ScoredGraph<'a> {
 
         let recipe_output = recipe.find_output_by_item(&output.item).unwrap();
         let machine_count = output.ratio(recipe_output);
-        let next_chain = chain.next();
+        let next_chain = self.next_path(chain);
 
         let node_index = match find_production_node(&self.graph, &recipe) {
             Some(existing_index) => {
@@ -335,7 +334,7 @@ impl<'a> ScoredGraph<'a> {
             self.graph.add_edge(
                 production_index,
                 child_index,
-                ScoredNodeEdge::new(output.clone(), PathChain::empty()),
+                ScoredNodeEdge::new(output.clone(), PathChain::default()),
             );
         }
 
@@ -393,6 +392,10 @@ impl<'a> ScoredGraph<'a> {
 
         self.graph[edge_index].score = score;
         score
+    }
+
+    fn next_path(&mut self, chain: &PathChain) -> PathChain {
+        self.path_chain_gen.next(chain)
     }
 
     fn is_same_path(&self, parent_edge_index: EdgeIndex, child_edge_index: EdgeIndex) -> bool {
@@ -464,7 +467,10 @@ impl<'a> ScoredGraph<'a> {
                 let mut slice_inputs_by_item = HashMap::new();
                 for (item, inputs) in inputs_by_item {
                     let inputs_slice = inputs.into();
-                    cached_inputs.insert(Rc::clone(&item), Rc::clone(&inputs_slice));
+
+                    cached_inputs
+                        .entry(Rc::clone(&item))
+                        .or_insert_with(|| Rc::clone(&inputs_slice));
                     slice_inputs_by_item.insert(item, inputs_slice);
                 }
 
@@ -485,9 +491,11 @@ impl<'a> ScoredGraph<'a> {
                 }
 
                 item_combinations.sort_unstable_by_key(|i| i.len());
-                let item_combinations = item_combinations.into();
-                cached_inputs.insert(Rc::clone(&output_item), Rc::clone(&item_combinations));
-                item_combinations
+                let item_combinations_slice = item_combinations.into();
+                cached_inputs
+                    .entry(Rc::clone(&output_item))
+                    .or_insert_with(|| Rc::clone(&item_combinations_slice));
+                item_combinations_slice
             }
             _ => Vec::new().into(),
         }
@@ -596,6 +604,39 @@ mod test {
     use crate::{game::test::get_test_game_db, plan::test::create_bit_set};
 
     use super::*;
+
+    #[test]
+    fn path_chain_generator_next() {
+        let mut chain = PathChain::default();
+        let mut gen = PathChainGenerator::default();
+
+        chain = gen.next(&chain);
+        assert_eq!(chain, PathChain(Vector::from(vec![0])));
+
+        chain = gen.next(&chain);
+        assert_eq!(chain, PathChain(Vector::from(vec![0, 1])));
+
+        chain = gen.next(&chain);
+        assert_eq!(chain, PathChain(Vector::from(vec![0, 1, 2])));
+
+        gen.next(&PathChain::default());
+        gen.next(&PathChain::default());
+
+        chain = gen.next(&chain);
+        assert_eq!(chain, PathChain(Vector::from(vec![0, 1, 2, 5])));
+    }
+
+    #[test]
+    fn path_chain_is_subset_of() {
+        let chain = PathChain(Vector::from(vec![1, 2, 3]));
+
+        assert!(PathChain(Vector::from(vec![1])).is_subset_of(&chain));
+        assert!(PathChain(Vector::from(vec![1, 2])).is_subset_of(&chain));
+        assert!(PathChain(Vector::from(vec![1, 2, 3])).is_subset_of(&chain));
+        assert!(!PathChain(Vector::from(vec![1, 2, 3, 4])).is_subset_of(&chain));
+        assert!(!PathChain(Vector::from(vec![5, 6])).is_subset_of(&chain));
+        assert!(!PathChain(Vector::from(vec![1, 2, 7])).is_subset_of(&chain));
+    }
 
     #[test]
     fn test_item_combinations_two_inputs_simple() {
