@@ -1,6 +1,6 @@
 use crate::{
     game::{Item, ItemValuePair, Recipe},
-    utils::round_f64,
+    utils::{round, FloatType},
 };
 use petgraph::{dot::Dot, graph::NodeIndex};
 use petgraph::{
@@ -8,26 +8,26 @@ use petgraph::{
     visit::EdgeRef,
     Direction::Incoming,
 };
-use std::fmt;
+use std::{fmt, rc::Rc};
 
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub struct Production<'a> {
-    pub recipe: &'a Recipe,
-    pub machine_count: f64,
+#[derive(Debug, Clone, PartialEq)]
+pub struct Production {
+    pub recipe: Rc<Recipe>,
+    pub machine_count: FloatType,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum NodeValue<'a> {
+#[derive(Debug, Clone, PartialEq)]
+pub enum NodeValue {
     Input(ItemValuePair),
     Output(ItemValuePair),
     ByProduct(ItemValuePair),
-    Production(Production<'a>),
+    Production(Production),
 }
 
-pub type GraphType<'a> = StableDiGraph<NodeValue<'a>, NodeEdge>;
+pub type GraphType = StableDiGraph<NodeValue, NodeEdge>;
 
 #[allow(dead_code)]
-impl<'a> NodeValue<'a> {
+impl NodeValue {
     pub fn new_input(input: ItemValuePair) -> Self {
         NodeValue::Input(input)
     }
@@ -40,7 +40,7 @@ impl<'a> NodeValue<'a> {
         NodeValue::ByProduct(output)
     }
 
-    pub fn new_production(recipe: &'a Recipe, machine_count: f64) -> Self {
+    pub fn new_production(recipe: Rc<Recipe>, machine_count: FloatType) -> Self {
         NodeValue::Production(Production {
             recipe,
             machine_count,
@@ -105,14 +105,14 @@ impl<'a> NodeValue<'a> {
         }
     }
 
-    pub fn as_production(&self) -> &Production<'a> {
+    pub fn as_production(&self) -> &Production {
         match self {
             NodeValue::Production(production) => production,
             _ => panic!("NodeValue is not Production"),
         }
     }
 
-    pub fn as_production_mut(&mut self) -> &mut Production<'a> {
+    pub fn as_production_mut(&mut self) -> &mut Production {
         match self {
             NodeValue::Production(production) => production,
             _ => panic!("NodeValue is not Production"),
@@ -120,7 +120,7 @@ impl<'a> NodeValue<'a> {
     }
 }
 
-impl<'a> fmt::Display for NodeValue<'a> {
+impl fmt::Display for NodeValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             NodeValue::Input(item_value) => {
@@ -128,16 +128,16 @@ impl<'a> fmt::Display for NodeValue<'a> {
                     f,
                     "{}\n{} / min",
                     item_value.item,
-                    round_f64(item_value.value, 3)
+                    round(item_value.value, 3)
                 )
             }
             NodeValue::Production(production) => {
                 write!(
                     f,
                     "{}\n{}x {}",
-                    production.recipe.name,
-                    round_f64(production.machine_count, 3),
-                    production.recipe.machine
+                    production.recipe,
+                    round(production.machine_count, 3),
+                    production.recipe.building
                 )
             }
             NodeValue::ByProduct(item_value, ..) => {
@@ -145,7 +145,7 @@ impl<'a> fmt::Display for NodeValue<'a> {
                     f,
                     "{}\n{} / min",
                     item_value.item,
-                    round_f64(item_value.value, 3)
+                    round(item_value.value, 3)
                 )
             }
             NodeValue::Output(item_value, ..) => {
@@ -153,14 +153,14 @@ impl<'a> fmt::Display for NodeValue<'a> {
                     f,
                     "{}\n{} / min",
                     item_value.item,
-                    round_f64(item_value.value, 3)
+                    round(item_value.value, 3)
                 )
             }
         }
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NodeEdge {
     pub value: ItemValuePair,
     pub order: u32,
@@ -172,12 +172,12 @@ impl NodeEdge {
     }
 
     #[inline]
-    pub fn item(&self) -> Item {
-        self.value.item
+    pub fn item(&self) -> &Item {
+        &self.value.item
     }
 
     #[inline]
-    pub fn value(&self) -> f64 {
+    pub fn value(&self) -> FloatType {
         self.value.value
     }
 }
@@ -188,48 +188,42 @@ impl fmt::Display for NodeEdge {
             f,
             "{}\n{} / min",
             self.value.item,
-            round_f64(self.value.value, 3)
+            round(self.value.value, 3)
         )
     }
 }
 
-pub fn find_input_node<E>(
-    graph: &StableDiGraph<NodeValue<'_>, E>,
-    item: Item,
-) -> Option<NodeIndex> {
-    graph.node_indices().find(|i| match graph[*i] {
-        NodeValue::Input(input) => item == input.item,
+pub fn find_input_node<E>(graph: &StableDiGraph<NodeValue, E>, item: &Item) -> Option<NodeIndex> {
+    graph.node_indices().find(|i| match &graph[*i] {
+        NodeValue::Input(input) => *item == *input.item,
         _ => false,
     })
 }
 
 pub fn find_production_node<E>(
-    graph: &StableDiGraph<NodeValue<'_>, E>,
+    graph: &StableDiGraph<NodeValue, E>,
     recipe: &Recipe,
 ) -> Option<NodeIndex> {
-    graph.node_indices().find(|i| match graph[*i] {
-        NodeValue::Production(production) => production.recipe == recipe,
+    graph.node_indices().find(|i| match &graph[*i] {
+        NodeValue::Production(production) => *production.recipe == *recipe,
         _ => false,
     })
 }
 
-pub fn find_output_node<E>(
-    graph: &StableDiGraph<NodeValue<'_>, E>,
-    item: Item,
-) -> Option<NodeIndex> {
-    graph.node_indices().find(|i| match graph[*i] {
-        NodeValue::Output(output) => item == output.item,
+pub fn find_output_node<E>(graph: &StableDiGraph<NodeValue, E>, item: &Item) -> Option<NodeIndex> {
+    graph.node_indices().find(|i| match &graph[*i] {
+        NodeValue::Output(output) => *item == *output.item,
         _ => false,
     })
 }
 
 #[allow(dead_code)]
 pub fn find_by_product_node<E>(
-    graph: &StableDiGraph<NodeValue<'_>, E>,
-    item: Item,
+    graph: &StableDiGraph<NodeValue, E>,
+    item: &Item,
 ) -> Option<NodeIndex> {
-    graph.node_indices().find(|i| match graph[*i] {
-        NodeValue::ByProduct(output) => item == output.item,
+    graph.node_indices().find(|i| match &graph[*i] {
+        NodeValue::ByProduct(output) => *item == *output.item,
         _ => false,
     })
 }
@@ -252,7 +246,7 @@ pub fn find_by_product_child<E>(
     (edge.id(), edge.source())
 }
 
-pub fn print_graph<E: fmt::Display>(graph: &StableDiGraph<NodeValue<'_>, E>) {
+pub fn print_graph<E: fmt::Display>(graph: &StableDiGraph<NodeValue, E>) {
     println!(
         "{}",
         format!(
@@ -260,7 +254,7 @@ pub fn print_graph<E: fmt::Display>(graph: &StableDiGraph<NodeValue<'_>, E>) {
             Dot::with_attr_getters(&graph, &[], &|_, _| String::new(), &|_, n| {
                 let color = match n.1 {
                     NodeValue::Input(input) => {
-                        if input.item.is_extractable() {
+                        if input.item.resource {
                             "lightslategray"
                         } else {
                             "peru"

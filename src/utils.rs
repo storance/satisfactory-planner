@@ -1,14 +1,14 @@
-pub const EPSILON: f64 = 0.00000001;
+#[cfg(not(feature = "f64"))]
+pub type FloatType = f32;
+#[cfg(feature = "f64")]
+pub type FloatType = f64;
 
-#[allow(dead_code)]
-pub fn round_f32(value: f32, decimals: u8) -> f32 {
-    let multiplier = 10.0f32.powi(decimals as i32);
+pub const EPSILON: FloatType = 0.000001;
 
-    (value * multiplier).round() / multiplier
-}
+const BASE_10: FloatType = 10.0;
 
-pub fn round_f64(value: f64, decimals: u8) -> f64 {
-    let multiplier = 10.0f64.powi(decimals as i32);
+pub fn round(value: FloatType, decimals: u8) -> FloatType {
+    let multiplier = BASE_10.powi(decimals as i32);
 
     (value * multiplier).round() / multiplier
 }

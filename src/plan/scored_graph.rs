@@ -1,45 +1,81 @@
 use super::{
     find_by_product_child, find_by_product_node, find_input_node, find_production_node, ItemBitSet,
-    NodeValue, PlanConfig, DEFAULT_LIMITS,
+    NodeValue, PlanConfig,
 };
 use crate::{
     game::{Item, ItemValuePair, Recipe},
-    utils::round_f64,
+    utils::{round, FloatType},
 };
+use im::Vector;
 use petgraph::{
     stable_graph::{EdgeIndex, NodeIndex, StableDiGraph},
     visit::EdgeRef,
     Direction::Incoming,
 };
-use std::{cmp::Ordering, collections::HashMap, fmt, ops::Index, sync::atomic};
+use std::{
+    cmp::Ordering,
+    collections::HashMap,
+    fmt,
+    hash::Hash,
+    ops::{Add, Index},
+    rc::Rc,
+};
 
-pub type ScoredGraphType<'a> = StableDiGraph<NodeValue<'a>, ScoredNodeEdge>;
+pub type ScoredGraphType = StableDiGraph<NodeValue, ScoredNodeEdge>;
+pub type ChildrenByInput = Vec<(Rc<Item>, Vec<(EdgeIndex, NodeIndex)>)>;
+
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
+pub struct PathChain(Vector<u32>);
+
+#[derive(Debug, Default)]
+pub struct PathChainGenerator(u32);
 
 #[derive(Debug, Clone)]
-pub struct PathChain(Vec<u32>);
+pub struct ScoredNodeEdge {
+    pub value: ItemValuePair,
+    pub score: Score,
+    pub chain: PathChain,
+}
 
-static ID_GENERATOR: atomic::AtomicU32 = atomic::AtomicU32::new(0);
+#[derive(Debug, Default, Copy, Clone, PartialEq)]
+pub struct Score {
+    pub resource_score: FloatType,
+    pub power_score: FloatType,
+    pub floor_area_score: FloatType,
+    pub volume_score: FloatType,
+}
 
-#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct OutputNodeScore {
+    pub output: ItemValuePair,
+    pub index: NodeIndex,
+    pub score: Score,
+    pub unique_inputs: u8,
+}
+
+#[derive(Debug)]
+pub struct ScoredGraph<'a> {
+    pub config: &'a PlanConfig,
+    pub graph: ScoredGraphType,
+    pub path_chain_gen: PathChainGenerator,
+    pub unique_inputs_by_item: HashMap<Rc<Item>, u8>,
+    pub output_nodes: Vec<OutputNodeScore>,
+}
+
+impl PathChainGenerator {
+    pub fn next(&mut self, chain: &PathChain) -> PathChain {
+        let id = self.0;
+        self.0 += 1;
+
+        let mut new_chain = chain.0.clone();
+        new_chain.push_back(id);
+        PathChain(new_chain)
+    }
+}
+
 impl PathChain {
-    pub fn empty() -> Self {
-        Self(Vec::new())
-    }
-
-    pub fn next(&self) -> Self {
-        let mut chain = self.0.clone();
-        let id = ID_GENERATOR.fetch_add(1, atomic::Ordering::Relaxed);
-        chain.push(id);
-
-        Self(chain)
-    }
-
     pub fn is_subset_of(&self, other: &Self) -> bool {
-        other.0.starts_with(self.0.as_slice())
-    }
-
-    pub fn id(&self) -> u32 {
-        self.0.last().copied().unwrap()
+        other.0.len() >= self.0.len() && other.0.iter().zip(self.0.iter()).all(|(a, b)| a == b)
     }
 }
 
@@ -57,19 +93,12 @@ impl fmt::Display for PathChain {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ScoredNodeEdge {
-    pub value: ItemValuePair,
-    pub score: f64,
-    pub chain: PathChain,
-}
-
 impl ScoredNodeEdge {
     #[inline]
     pub fn new(value: ItemValuePair, chain: PathChain) -> Self {
         Self {
             value,
-            score: f64::INFINITY,
+            score: Score::infinity(),
             chain,
         }
     }
@@ -81,24 +110,16 @@ impl fmt::Display for ScoredNodeEdge {
             f,
             "{}\n{} / min\nScore: {}\nChain: {}",
             self.value.item,
-            round_f64(self.value.value, 3),
-            round_f64(self.score, 1),
+            round(self.value.value, 3),
+            self.score,
             self.chain
         )
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub struct OutputNodeScore {
-    pub output: ItemValuePair,
-    pub index: NodeIndex,
-    pub score: f64,
-    pub unique_inputs: u8,
-}
-
 impl OutputNodeScore {
     #[inline]
-    fn new(output: ItemValuePair, index: NodeIndex, score: f64, unique_inputs: u8) -> Self {
+    fn new(output: ItemValuePair, index: NodeIndex, score: Score, unique_inputs: u8) -> Self {
         Self {
             output,
             index,
@@ -108,11 +129,97 @@ impl OutputNodeScore {
     }
 }
 
-pub struct ScoredGraph<'a> {
-    pub config: &'a PlanConfig,
-    pub graph: ScoredGraphType<'a>,
-    pub unique_inputs_by_item: HashMap<Item, u8>,
-    pub output_nodes: Vec<OutputNodeScore>,
+const RESOURCE_SCORE_SCALE_FACTOR: FloatType = 10_000.0;
+
+impl Score {
+    pub fn infinity() -> Self {
+        Self {
+            resource_score: FloatType::INFINITY,
+            power_score: FloatType::INFINITY,
+            floor_area_score: FloatType::INFINITY,
+            volume_score: FloatType::INFINITY,
+        }
+    }
+
+    pub fn for_input_node(input: &ItemValuePair, limit: FloatType) -> Self {
+        let resource_score = if limit == 0.0 || limit.is_infinite() {
+            0.0
+        } else {
+            input.value / limit * RESOURCE_SCORE_SCALE_FACTOR
+        };
+
+        Self {
+            resource_score,
+            power_score: 0.0,
+            floor_area_score: 0.0,
+            volume_score: 0.0,
+        }
+    }
+
+    pub fn for_production_node(recipe: &Recipe, machine_count: FloatType) -> Score {
+        let power_score = recipe.average_mw(100.0) * machine_count;
+        let floor_area_score = recipe.building.floor_area() * machine_count.ceil();
+        let volume_score = recipe.building.volume() * machine_count.ceil();
+
+        Self {
+            resource_score: 0.0,
+            power_score,
+            floor_area_score,
+            volume_score,
+        }
+    }
+}
+
+impl Eq for Score {}
+
+impl PartialOrd for Score {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match self.resource_score.partial_cmp(&other.resource_score) {
+            Some(Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self.power_score.partial_cmp(&other.power_score) {
+            Some(Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self.floor_area_score.partial_cmp(&other.floor_area_score) {
+            Some(Ordering::Equal) => {}
+            ord => return ord,
+        }
+        self.volume_score.partial_cmp(&other.volume_score)
+    }
+}
+
+impl Ord for Score {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+impl Add<Score> for Score {
+    type Output = Self;
+
+    fn add(self, rhs: Score) -> Self::Output {
+        Self {
+            resource_score: self.resource_score + rhs.resource_score,
+            power_score: self.power_score + rhs.power_score,
+            floor_area_score: self.floor_area_score + rhs.floor_area_score,
+            volume_score: self.volume_score + rhs.volume_score,
+        }
+    }
+}
+
+impl fmt::Display for Score {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "({}, {} MW, {} m^2, {} m^3)",
+            round(self.resource_score, 1),
+            round(self.power_score, 1),
+            round(self.floor_area_score, 1),
+            round(self.volume_score, 1)
+        )
+    }
 }
 
 impl<'a> ScoredGraph<'a> {
@@ -122,6 +229,7 @@ impl<'a> ScoredGraph<'a> {
             config,
             graph: ScoredGraphType::new(),
             unique_inputs_by_item: HashMap::new(),
+            path_chain_gen: PathChainGenerator::default(),
             output_nodes: Vec::new(),
         }
     }
@@ -129,25 +237,25 @@ impl<'a> ScoredGraph<'a> {
     pub fn build(&mut self) {
         let mut output_indices: Vec<NodeIndex> = Vec::new();
         for output in &self.config.outputs {
-            let node_index = self.graph.add_node(NodeValue::new_output(*output));
+            let node_index = self.graph.add_node(NodeValue::new_output(output.clone()));
             output_indices.push(node_index);
-            self.create_children(node_index, output, &PathChain::empty());
+            self.create_children(node_index, output, &PathChain::default());
         }
 
-        let mut cached_inputs: HashMap<Item, Vec<ItemBitSet>> = HashMap::new();
+        let mut cached_inputs = HashMap::new();
         for node_index in output_indices {
-            let output = *self.graph[node_index].as_output();
+            let output = self.graph[node_index].as_output().clone();
             let mut child_walker = self.graph.neighbors_directed(node_index, Incoming).detach();
 
-            let mut score: f64 = f64::INFINITY;
+            let mut score = Score::infinity();
             while let Some((edge_index, _)) = child_walker.next(&self.graph) {
-                score = score.min(self.score_edge(edge_index));
+                score = score.min(self.score_edge(edge_index, output.clone()));
             }
 
             let item_combinations = self.calc_input_combinations(
                 node_index,
-                output.item,
-                &PathChain::empty(),
+                Rc::clone(&output.item),
+                &PathChain::default(),
                 &mut cached_inputs,
             );
             self.output_nodes.push(OutputNodeScore::new(
@@ -169,7 +277,7 @@ impl<'a> ScoredGraph<'a> {
                 ord => return ord,
             }
 
-            a.score.total_cmp(&b.score).reverse()
+            a.score.cmp(&b.score).reverse()
         });
     }
 
@@ -179,12 +287,12 @@ impl<'a> ScoredGraph<'a> {
         output: &ItemValuePair,
         chain: &PathChain,
     ) {
-        if self.config.has_input(output.item) {
+        if self.config.has_input(&output.item) {
             self.create_input_node(parent_index, output, chain);
         }
 
-        if !output.item.is_extractable() {
-            for recipe in self.config.recipes.find_recipes_by_output(output.item) {
+        if !output.item.resource {
+            for recipe in self.config.game_db.find_recipes_by_output(&output.item) {
                 self.create_production_node(parent_index, recipe, output, chain);
             }
         }
@@ -196,25 +304,26 @@ impl<'a> ScoredGraph<'a> {
         output: &ItemValuePair,
         chain: &PathChain,
     ) {
-        let node_index = match find_input_node(&self.graph, output.item) {
+        let node_index = match find_input_node(&self.graph, &output.item) {
             Some(existing_index) => {
                 *self.graph[existing_index].as_input_mut() += output;
                 existing_index
             }
-            None => self.graph.add_node(NodeValue::new_input(*output)),
+            None => self.graph.add_node(NodeValue::new_input(output.clone())),
         };
 
+        let next_chain = self.next_path(chain);
         self.graph.add_edge(
             node_index,
             parent_index,
-            ScoredNodeEdge::new(*output, chain.next()),
+            ScoredNodeEdge::new(output.clone(), next_chain),
         );
     }
 
     fn create_production_node(
         &mut self,
         parent_index: NodeIndex,
-        recipe: &'a Recipe,
+        recipe: Rc<Recipe>,
         output: &ItemValuePair,
         chain: &PathChain,
     ) {
@@ -228,33 +337,33 @@ impl<'a> ScoredGraph<'a> {
     fn create_single_output_production_node(
         &mut self,
         parent_index: NodeIndex,
-        recipe: &'a Recipe,
+        recipe: Rc<Recipe>,
         output: &ItemValuePair,
         chain: &PathChain,
     ) {
         assert!(recipe.outputs.len() == 1);
 
-        let recipe_output = recipe.find_output_by_item(output.item).unwrap();
-        let machine_count = *output / *recipe_output;
-        let next_chain = chain.next();
+        let recipe_output = recipe.find_output_by_item(&output.item).unwrap();
+        let machine_count = output.ratio(recipe_output);
+        let next_chain = self.next_path(chain);
 
-        let node_index = match find_production_node(&self.graph, recipe) {
+        let node_index = match find_production_node(&self.graph, &recipe) {
             Some(existing_index) => {
                 self.graph[existing_index].as_production_mut().machine_count += machine_count;
                 existing_index
             }
             None => self
                 .graph
-                .add_node(NodeValue::new_production(recipe, machine_count)),
+                .add_node(NodeValue::new_production(Rc::clone(&recipe), machine_count)),
         };
         self.graph.add_edge(
             node_index,
             parent_index,
-            ScoredNodeEdge::new(*output, next_chain.clone()),
+            ScoredNodeEdge::new(output.clone(), next_chain.clone()),
         );
 
         for input in &recipe.inputs {
-            let desired_output = *input * machine_count;
+            let desired_output = input.mul(machine_count);
             self.create_children(node_index, &desired_output, &next_chain);
         }
     }
@@ -262,24 +371,24 @@ impl<'a> ScoredGraph<'a> {
     pub fn create_multiple_output_production_node(
         &mut self,
         parent_index: NodeIndex,
-        recipe: &'a Recipe,
+        recipe: Rc<Recipe>,
         output: &ItemValuePair,
         chain: &PathChain,
     ) {
         assert!(recipe.outputs.len() > 1);
 
-        let recipe_output = recipe.find_output_by_item(output.item).unwrap();
-        let machine_count = *output / *recipe_output;
-        let next_chain = chain.next();
+        let recipe_output = recipe.find_output_by_item(&output.item).unwrap();
+        let machine_count = output.ratio(recipe_output);
+        let next_chain = self.next_path(chain);
 
-        let node_index = match find_production_node(&self.graph, recipe) {
+        let node_index = match find_production_node(&self.graph, &recipe) {
             Some(existing_index) => {
                 self.graph[existing_index].as_production_mut().machine_count += machine_count;
                 existing_index
             }
             None => self
                 .graph
-                .add_node(NodeValue::new_production(recipe, machine_count)),
+                .add_node(NodeValue::new_production(Rc::clone(&recipe), machine_count)),
         };
 
         for o in &recipe.outputs {
@@ -291,13 +400,13 @@ impl<'a> ScoredGraph<'a> {
             self.create_by_product_node(
                 by_product_parent_index,
                 node_index,
-                *o * machine_count,
+                o.mul(machine_count),
                 &next_chain,
             );
         }
 
         for input in &recipe.inputs {
-            let desired_output = *input * machine_count;
+            let desired_output = input.mul(machine_count);
             self.create_children(node_index, &desired_output, &next_chain);
         }
     }
@@ -309,19 +418,21 @@ impl<'a> ScoredGraph<'a> {
         output: ItemValuePair,
         chain: &PathChain,
     ) -> NodeIndex {
-        let child_index = match find_by_product_node(&self.graph, output.item) {
+        let child_index = match find_by_product_node(&self.graph, &output.item) {
             Some(existing_index) => {
-                *self.graph[existing_index].as_by_product_mut() += output;
+                *self.graph[existing_index].as_by_product_mut() += output.value;
                 existing_index
             }
-            None => self.graph.add_node(NodeValue::new_by_product(output)),
+            None => self
+                .graph
+                .add_node(NodeValue::new_by_product(output.clone())),
         };
 
         if let Some(parent_index) = parent_index {
             self.graph.add_edge(
                 child_index,
                 parent_index,
-                ScoredNodeEdge::new(output, chain.clone()),
+                ScoredNodeEdge::new(output.clone(), chain.clone()),
             );
         }
 
@@ -331,32 +442,27 @@ impl<'a> ScoredGraph<'a> {
             self.graph.add_edge(
                 production_index,
                 child_index,
-                ScoredNodeEdge::new(output, PathChain::empty()),
+                ScoredNodeEdge::new(output.clone(), PathChain::default()),
             );
         }
 
         child_index
     }
 
-    pub fn score_edge(&mut self, edge_index: EdgeIndex) -> f64 {
+    pub fn score_edge(&mut self, edge_index: EdgeIndex, output: ItemValuePair) -> Score {
         let (child_index, _parent_index) = self.graph.edge_endpoints(edge_index).unwrap();
-        let edge_weight = self.graph[edge_index].value;
 
         let score = match self.graph[child_index] {
             NodeValue::ByProduct(..) => {
                 let (child_edge_index, _) = find_by_product_child(child_index, &self.graph);
-                self.score_edge(child_edge_index)
+                self.score_edge(child_edge_index, output)
             }
             NodeValue::Input(..) => {
-                if edge_weight.item.is_extractable() {
-                    let input_limit = DEFAULT_LIMITS
-                        .iter()
-                        .find(|(i, _)| *i == edge_weight.item)
-                        .map(|(_, v)| *v)
-                        .unwrap_or(0.0);
-                    edge_weight.value / input_limit * 10000.0
+                if output.item.resource {
+                    let input_limit = self.config.game_db.get_resource_limit(&output.item);
+                    Score::for_input_node(&output, input_limit)
                 } else {
-                    0.0
+                    Score::default()
                 }
             }
             NodeValue::Production(..) => {
@@ -364,35 +470,42 @@ impl<'a> ScoredGraph<'a> {
                     .graph
                     .neighbors_directed(child_index, Incoming)
                     .detach();
-                let mut scores_by_input: HashMap<Item, Vec<f64>> = HashMap::new();
+                let mut scores_by_input: HashMap<String, Vec<Score>> = HashMap::new();
                 while let Some((child_edge_index, _)) = child_walker.next(&self.graph) {
                     if !self.is_same_path(edge_index, child_edge_index) {
                         continue;
                     }
 
-                    let score = self.score_edge(child_edge_index);
+                    let score = self
+                        .score_edge(child_edge_index, self.graph[child_edge_index].value.clone());
                     scores_by_input
-                        .entry(self.graph[child_edge_index].value.item)
+                        .entry(self.graph[child_edge_index].value.item.key.clone())
                         .or_default()
                         .push(score);
                 }
 
-                scores_by_input
-                    .values()
-                    .map(|scores| {
-                        scores
-                            .iter()
-                            .copied()
-                            .min_by(f64::total_cmp)
-                            .unwrap_or(f64::INFINITY)
-                    })
-                    .sum()
+                if scores_by_input.is_empty() {
+                    Score::infinity()
+                } else {
+                    let recipe = &self.graph[child_index].as_production().recipe;
+                    let recipe_output = recipe.find_output_by_item(&output.item).unwrap();
+                    let recipe_score =
+                        Score::for_production_node(recipe, output.ratio(recipe_output));
+                    scores_by_input
+                        .values()
+                        .map(|scores| scores.iter().copied().min().unwrap_or(Score::infinity()))
+                        .fold(recipe_score, |acc, e| acc + e)
+                }
             }
             NodeValue::Output(..) => panic!("Unexpectedly encountered an output node"),
         };
 
         self.graph[edge_index].score = score;
         score
+    }
+
+    fn next_path(&mut self, chain: &PathChain) -> PathChain {
+        self.path_chain_gen.next(chain)
     }
 
     fn is_same_path(&self, parent_edge_index: EdgeIndex, child_edge_index: EdgeIndex) -> bool {
@@ -419,66 +532,82 @@ impl<'a> ScoredGraph<'a> {
     fn calc_input_combinations(
         &self,
         node_index: NodeIndex,
-        output_item: Item,
+        output_item: Rc<Item>,
         chain: &PathChain,
-        cached_inputs: &mut HashMap<Item, Vec<ItemBitSet>>,
-    ) -> Vec<ItemBitSet> {
+        cached_inputs: &mut HashMap<Rc<Item>, Rc<[ItemBitSet]>>,
+    ) -> Rc<[ItemBitSet]> {
         if let Some(existing) = cached_inputs.get(&output_item) {
-            return existing.clone();
+            return Rc::clone(existing);
         }
 
-        match self.graph[node_index] {
+        match &self.graph[node_index] {
             NodeValue::Input(input) => {
-                if input.item.is_extractable() {
-                    vec![ItemBitSet::new(input.item)]
+                assert!(output_item == input.item);
+                if input.item.resource {
+                    vec![ItemBitSet::new(&input.item)].into()
                 } else {
-                    Vec::new()
+                    Vec::new().into()
                 }
             }
             NodeValue::Production(_production) => {
-                let mut inputs_by_item: HashMap<Item, Vec<ItemBitSet>> = HashMap::new();
+                let mut inputs_by_item: HashMap<Rc<Item>, Vec<ItemBitSet>> = HashMap::new();
                 for edge in self.graph.edges_directed(node_index, Incoming) {
                     if !chain.is_subset_of(&edge.weight().chain) {
                         continue;
                     }
 
-                    let child_item = edge.weight().value.item;
+                    let child_item = &edge.weight().value.item;
                     let child_inputs = self.calc_input_combinations(
                         edge.source(),
-                        child_item,
+                        Rc::clone(child_item),
                         &edge.weight().chain,
                         cached_inputs,
                     );
 
                     inputs_by_item
-                        .entry(child_item)
+                        .entry(Rc::clone(child_item))
                         .or_default()
-                        .extend(child_inputs);
+                        .extend(child_inputs.iter());
                 }
 
-                for (item, inputs) in &mut inputs_by_item {
-                    inputs.sort_by_key(|i| i.len());
-                    cached_inputs.insert(*item, inputs.clone());
+                inputs_by_item
+                    .values_mut()
+                    .for_each(|inputs| inputs.sort_unstable_by_key(|i| i.len()));
+
+                let mut slice_inputs_by_item = HashMap::new();
+                for (item, inputs) in inputs_by_item {
+                    let inputs_slice = inputs.into();
+
+                    cached_inputs
+                        .entry(Rc::clone(&item))
+                        .or_insert_with(|| Rc::clone(&inputs_slice));
+                    slice_inputs_by_item.insert(item, inputs_slice);
                 }
 
-                item_combinations(&inputs_by_item)
+                item_combinations(&slice_inputs_by_item)
             }
             NodeValue::Output(..) => {
                 let mut item_combinations: Vec<ItemBitSet> = Vec::new();
                 for edge in self.graph.edges_directed(node_index, Incoming) {
-                    item_combinations.extend(self.calc_input_combinations(
-                        edge.source(),
-                        output_item,
-                        &edge.weight().chain,
-                        cached_inputs,
-                    ));
+                    item_combinations.extend(
+                        self.calc_input_combinations(
+                            edge.source(),
+                            Rc::clone(&output_item),
+                            &edge.weight().chain,
+                            cached_inputs,
+                        )
+                        .iter(),
+                    );
                 }
 
-                item_combinations.sort_by_key(|i| i.len());
-                cached_inputs.insert(output_item, item_combinations.clone());
-                item_combinations
+                item_combinations.sort_unstable_by_key(|i| i.len());
+                let item_combinations_slice = item_combinations.into();
+                cached_inputs
+                    .entry(Rc::clone(&output_item))
+                    .or_insert_with(|| Rc::clone(&item_combinations_slice));
+                item_combinations_slice
             }
-            _ => Vec::new(),
+            _ => Vec::new().into(),
         }
     }
 
@@ -497,44 +626,41 @@ impl<'a> ScoredGraph<'a> {
             }
         }
 
-        children.sort_by(|a, b| self.graph[a.0].score.total_cmp(&self.graph[b.0].score));
+        children.sort_unstable_by(|a, b| self.graph[a.0].score.cmp(&self.graph[b.0].score));
         children
     }
 
-    pub fn production_children(
-        &self,
-        node_index: NodeIndex,
-        chain: &PathChain,
-    ) -> Vec<(Item, Vec<(EdgeIndex, NodeIndex)>)> {
+    pub fn production_children(&self, node_index: NodeIndex, chain: &PathChain) -> ChildrenByInput {
         let production = self.graph[node_index].as_production();
 
-        let mut children_by_item: HashMap<Item, Vec<(EdgeIndex, NodeIndex)>> = production
+        let mut children_by_item: HashMap<Rc<Item>, Vec<(EdgeIndex, NodeIndex)>> = production
             .recipe
             .inputs
             .iter()
-            .map(|i| (i.item, Vec::new()))
+            .map(|i| (Rc::clone(&i.item), Vec::new()))
             .collect();
 
         for edge in self.graph.edges_directed(node_index, Incoming) {
             if chain.is_subset_of(&edge.weight().chain) {
-                let edge_item = edge.weight().value.item;
+                let edge_item = &edge.weight().value.item;
 
                 children_by_item
-                    .entry(edge_item)
+                    .entry(Rc::clone(edge_item))
                     .or_default()
                     .push((edge.id(), edge.source()));
             }
         }
 
-        let mut sorted_children: Vec<(Item, Vec<(EdgeIndex, NodeIndex)>)> = Vec::new();
+        let mut sorted_children: ChildrenByInput = Vec::new();
         for (item, mut children_for_item) in children_by_item {
             children_for_item
-                .sort_by(|a, b| self.graph[a.0].score.total_cmp(&self.graph[b.0].score));
+                .sort_unstable_by(|a, b| self.graph[a.0].score.cmp(&self.graph[b.0].score));
 
             sorted_children.push((item, children_for_item));
         }
-        sorted_children
-            .sort_by_key(|(item, _)| self.unique_inputs_by_item.get(item).copied().unwrap_or(0));
+        sorted_children.sort_unstable_by_key(|(item, _)| {
+            self.unique_inputs_by_item.get(item).copied().unwrap_or(0)
+        });
 
         sorted_children
     }
@@ -549,19 +675,22 @@ impl<'a> Index<EdgeIndex> for ScoredGraph<'a> {
 }
 
 impl<'a> Index<NodeIndex> for ScoredGraph<'a> {
-    type Output = NodeValue<'a>;
+    type Output = NodeValue;
 
-    fn index(&self, index: NodeIndex) -> &NodeValue<'a> {
+    fn index(&self, index: NodeIndex) -> &NodeValue {
         &self.graph[index]
     }
 }
 
-fn item_combinations(inputs_by_item: &HashMap<Item, Vec<ItemBitSet>>) -> Vec<ItemBitSet> {
-    let mut combinations: Vec<ItemBitSet> = inputs_by_item
-        .values()
-        .next()
-        .cloned()
-        .unwrap_or(Vec::new());
+fn item_combinations<K: Eq + Hash>(
+    inputs_by_item: &HashMap<K, Rc<[ItemBitSet]>>,
+) -> Rc<[ItemBitSet]> {
+    let mut combinations = Vec::new();
+    if let Some(bit_sets) = inputs_by_item.values().next() {
+        combinations.extend(bit_sets.iter());
+    } else {
+        return combinations.into();
+    }
 
     for inputs in inputs_by_item.values().skip(1) {
         let prev_combinations = combinations;
@@ -569,154 +698,201 @@ fn item_combinations(inputs_by_item: &HashMap<Item, Vec<ItemBitSet>>) -> Vec<Ite
         combinations = Vec::with_capacity(capacity);
 
         for prev_combination in &prev_combinations {
-            for input in inputs {
+            for input in inputs.iter() {
                 combinations.push(prev_combination.union(input));
             }
         }
     }
 
-    combinations.sort();
+    combinations.sort_unstable();
     combinations.dedup();
-    combinations
+    combinations.into()
 }
 
 #[cfg(test)]
 mod test {
+    use crate::{game::test::get_test_game_db, plan::test::create_bit_set};
+
     use super::*;
 
     #[test]
+    fn path_chain_generator_next() {
+        let mut chain = PathChain::default();
+        let mut gen = PathChainGenerator::default();
+
+        chain = gen.next(&chain);
+        assert_eq!(chain, PathChain(Vector::from(vec![0])));
+
+        chain = gen.next(&chain);
+        assert_eq!(chain, PathChain(Vector::from(vec![0, 1])));
+
+        chain = gen.next(&chain);
+        assert_eq!(chain, PathChain(Vector::from(vec![0, 1, 2])));
+
+        gen.next(&PathChain::default());
+        gen.next(&PathChain::default());
+
+        chain = gen.next(&chain);
+        assert_eq!(chain, PathChain(Vector::from(vec![0, 1, 2, 5])));
+    }
+
+    #[test]
+    fn path_chain_is_subset_of() {
+        let chain = PathChain(Vector::from(vec![1, 2, 3]));
+
+        assert!(PathChain(Vector::from(vec![1])).is_subset_of(&chain));
+        assert!(PathChain(Vector::from(vec![1, 2])).is_subset_of(&chain));
+        assert!(PathChain(Vector::from(vec![1, 2, 3])).is_subset_of(&chain));
+        assert!(!PathChain(Vector::from(vec![1, 2, 3, 4])).is_subset_of(&chain));
+        assert!(!PathChain(Vector::from(vec![5, 6])).is_subset_of(&chain));
+        assert!(!PathChain(Vector::from(vec![1, 2, 7])).is_subset_of(&chain));
+    }
+
+    #[test]
     fn test_item_combinations_two_inputs_simple() {
-        let mut inputs_by_item = HashMap::new();
-        inputs_by_item.insert(Item::IronIngot, vec![ItemBitSet::from(&[Item::IronOre])]);
-        inputs_by_item.insert(Item::Coal, vec![ItemBitSet::from(&[Item::Coal])]);
+        let game_db = get_test_game_db();
+
+        let iron_ore = game_db.find_item("Desc_OreIron_C").unwrap();
+        let coal = game_db.find_item("Desc_Coal_C").unwrap();
+
+        let mut inputs_by_item: HashMap<String, Rc<[ItemBitSet]>> = HashMap::new();
+        inputs_by_item.insert(
+            iron_ore.key.clone(),
+            vec![create_bit_set(&[&iron_ore])].into(),
+        );
+        inputs_by_item.insert(coal.key.clone(), vec![create_bit_set(&[&coal])].into());
 
         assert_eq!(
             item_combinations(&inputs_by_item),
-            vec![ItemBitSet::from(&[Item::IronOre, Item::Coal])]
+            vec![create_bit_set(&[&iron_ore, &coal])].into()
         );
     }
 
     #[test]
     fn test_item_combinations_two_inputs_dedupes() {
-        let mut inputs_by_item = HashMap::new();
+        let game_db = get_test_game_db();
+
+        let iron_ore = game_db.find_item("Desc_OreIron_C").unwrap();
+        let copper_ore = game_db.find_item("Desc_OreCopper_C").unwrap();
+        let water = game_db.find_item("Desc_Water_C").unwrap();
+
+        let mut inputs_by_item: HashMap<String, Rc<[ItemBitSet]>> = HashMap::new();
         inputs_by_item.insert(
-            Item::IronIngot,
+            String::from("Desc_IronIngot_C"),
             vec![
-                ItemBitSet::from(&[Item::IronOre]),
-                ItemBitSet::from(&[Item::IronOre, Item::Water]),
-            ],
+                create_bit_set(&[&iron_ore]),
+                create_bit_set(&[&iron_ore, &water]),
+            ]
+            .into(),
         );
         inputs_by_item.insert(
-            Item::CopperIngot,
+            String::from("Desc_CopperIngot_C"),
             vec![
-                ItemBitSet::from(&[Item::CopperOre]),
-                ItemBitSet::from(&[Item::CopperOre, Item::Water]),
-            ],
+                create_bit_set(&[&copper_ore]),
+                create_bit_set(&[&copper_ore, &water]),
+            ]
+            .into(),
         );
 
         assert_eq!(
             item_combinations(&inputs_by_item),
             vec![
-                ItemBitSet::from(&[Item::IronOre, Item::CopperOre]),
-                ItemBitSet::from(&[Item::IronOre, Item::CopperOre, Item::Water]),
-            ],
+                create_bit_set(&[&iron_ore, &copper_ore]),
+                create_bit_set(&[&iron_ore, &copper_ore, &water]),
+            ]
+            .into(),
         );
     }
 
     #[test]
     fn test_item_combinations_three_inputs() {
-        let mut inputs_by_item = HashMap::new();
+        let game_db = get_test_game_db();
+
+        let iron_ore = game_db.find_item("Desc_OreIron_C").unwrap();
+        let copper_ore = game_db.find_item("Desc_OreCopper_C").unwrap();
+        let caterium_ore = game_db.find_item("Desc_OreGold_C").unwrap();
+        let water = game_db.find_item("Desc_Water_C").unwrap();
+        let limestone = game_db.find_item("Desc_Stone_C").unwrap();
+        let raw_quartz = game_db.find_item("Desc_RawQuartz_C").unwrap();
+        let coal = game_db.find_item("Desc_Coal_C").unwrap();
+        let bauxite = game_db.find_item("Desc_OreBauxite_C").unwrap();
+
+        let mut inputs_by_item: HashMap<String, Rc<[ItemBitSet]>> = HashMap::new();
         inputs_by_item.insert(
-            Item::IronIngot,
+            String::from("Desc_IronIngot_C"),
             vec![
-                ItemBitSet::from(&[Item::IronOre]),
-                ItemBitSet::from(&[Item::IronOre, Item::Water]),
-            ],
+                create_bit_set(&[&iron_ore]),
+                create_bit_set(&[&iron_ore, &water]),
+            ]
+            .into(),
         );
         inputs_by_item.insert(
-            Item::CopperIngot,
+            String::from("Desc_Wire_C"),
             vec![
-                ItemBitSet::from(&[Item::CopperOre]),
-                ItemBitSet::from(&[Item::CateriumOre]),
-            ],
+                create_bit_set(&[&copper_ore]),
+                create_bit_set(&[&caterium_ore]),
+            ]
+            .into(),
         );
 
         inputs_by_item.insert(
-            Item::AluminumCasing,
+            String::from("Desc_AluminumCasing_C"),
             vec![
-                ItemBitSet::from(&[Item::Bauxite, Item::Coal, Item::RawQuartz]),
-                ItemBitSet::from(&[Item::Bauxite, Item::Coal, Item::RawQuartz, Item::Limestone]),
-            ],
+                create_bit_set(&[&bauxite, &coal, &raw_quartz]),
+                create_bit_set(&[&bauxite, &coal, &raw_quartz, &limestone]),
+            ]
+            .into(),
         );
 
         let mut expected = vec![
-            ItemBitSet::from(&[
-                Item::IronOre,
-                Item::CopperOre,
-                Item::Bauxite,
-                Item::Coal,
-                Item::RawQuartz,
+            create_bit_set(&[&iron_ore, &copper_ore, &bauxite, &coal, &raw_quartz]),
+            create_bit_set(&[
+                &iron_ore,
+                &copper_ore,
+                &bauxite,
+                &coal,
+                &raw_quartz,
+                &limestone,
             ]),
-            ItemBitSet::from(&[
-                Item::IronOre,
-                Item::CopperOre,
-                Item::Bauxite,
-                Item::Coal,
-                Item::RawQuartz,
-                Item::Limestone,
+            create_bit_set(&[&iron_ore, &caterium_ore, &bauxite, &coal, &raw_quartz]),
+            create_bit_set(&[
+                &iron_ore,
+                &caterium_ore,
+                &bauxite,
+                &coal,
+                &raw_quartz,
+                &limestone,
             ]),
-            ItemBitSet::from(&[
-                Item::IronOre,
-                Item::CateriumOre,
-                Item::Bauxite,
-                Item::Coal,
-                Item::RawQuartz,
+            create_bit_set(&[&iron_ore, &water, &copper_ore, &bauxite, &coal, &raw_quartz]),
+            create_bit_set(&[
+                &iron_ore,
+                &water,
+                &copper_ore,
+                &bauxite,
+                &coal,
+                &raw_quartz,
+                &limestone,
             ]),
-            ItemBitSet::from(&[
-                Item::IronOre,
-                Item::CateriumOre,
-                Item::Bauxite,
-                Item::Coal,
-                Item::RawQuartz,
-                Item::Limestone,
+            create_bit_set(&[
+                &iron_ore,
+                &water,
+                &caterium_ore,
+                &bauxite,
+                &coal,
+                &raw_quartz,
             ]),
-            ItemBitSet::from(&[
-                Item::IronOre,
-                Item::Water,
-                Item::CopperOre,
-                Item::Bauxite,
-                Item::Coal,
-                Item::RawQuartz,
-            ]),
-            ItemBitSet::from(&[
-                Item::IronOre,
-                Item::Water,
-                Item::CopperOre,
-                Item::Bauxite,
-                Item::Coal,
-                Item::RawQuartz,
-                Item::Limestone,
-            ]),
-            ItemBitSet::from(&[
-                Item::IronOre,
-                Item::Water,
-                Item::CateriumOre,
-                Item::Bauxite,
-                Item::Coal,
-                Item::RawQuartz,
-            ]),
-            ItemBitSet::from(&[
-                Item::IronOre,
-                Item::Water,
-                Item::CateriumOre,
-                Item::Bauxite,
-                Item::Coal,
-                Item::RawQuartz,
-                Item::Limestone,
+            create_bit_set(&[
+                &iron_ore,
+                &water,
+                &caterium_ore,
+                &bauxite,
+                &coal,
+                &raw_quartz,
+                &limestone,
             ]),
         ];
-        expected.sort();
+        expected.sort_unstable();
 
-        assert_eq!(item_combinations(&inputs_by_item), expected);
+        assert_eq!(item_combinations(&inputs_by_item), expected.into());
     }
 }

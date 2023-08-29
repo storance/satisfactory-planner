@@ -1,56 +1,51 @@
-extern crate anyhow;
-extern crate indexmap;
-extern crate petgraph;
-extern crate serde;
-extern crate serde_yaml;
-extern crate thiserror;
+use std::path::PathBuf;
 
 use crate::{
-    game::{Item, Machine, RecipeDatabase},
+    game::GameDatabase,
     plan::{print_graph, solve, PlanConfig},
 };
+use clap::Parser;
 
 mod game;
 mod plan;
 mod utils;
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Path to the game database json.  Defaults to game-db.json
+    #[arg(short = 'd', long = "db")]
+    game_db: Option<PathBuf>,
+
+    /// Path to the plan configuration yaml
+    #[arg()]
+    plan: PathBuf,
+}
+
 fn main() {
-    let recipes = RecipeDatabase::from_file("recipes.yml").unwrap_or_else(|e| {
-        panic!("Failed to load recipes: {}", e);
+    let args = Args::parse();
+
+    let game_db_path = args.game_db.unwrap_or(PathBuf::from("game-db.json"));
+
+    let game_db = GameDatabase::from_file(&game_db_path).unwrap_or_else(|e| {
+        panic!(
+            "Failed to load game database {}: {}",
+            game_db_path.display(),
+            e
+        );
     });
 
-    let plan = PlanConfig::from_file("plan.yml", &recipes).unwrap_or_else(|e| {
-        panic!("Failed to load plan: {}", e);
+    let plan = PlanConfig::from_file(&args.plan, &game_db).unwrap_or_else(|e| {
+        panic!("Failed to load plan {}: {}", args.plan.display(), e);
     });
 
     let graph = solve(&plan).unwrap_or_else(|e| {
         panic!("Failed to solve plan: {}", e);
     });
-
-    /*let mut graph = ScoredGraph::new(&plan);
-    graph.build();*/
-
     print_graph(&graph);
-}
 
-pub fn print_item(item: Item) {
-    println!(
-        "{:?}(display_name: {}, is_fluid(): {}. is_extractable: {}, sink_points: {:?})",
-        item,
-        item.display_name(),
-        item.is_fluid(),
-        item.is_extractable(),
-        item.sink_points()
-    )
-}
+    /*let mut graph = crate::plan::ScoredGraph::new(&plan);
+    graph.build();
 
-pub fn print_machine(machine: Machine) {
-    println!(
-        "{}{{{}-{}}}{} => {}",
-        machine.display_name(),
-        machine.min_power(),
-        machine.max_power(),
-        machine.input_ports(),
-        machine.output_ports()
-    );
+    print_graph(&graph.graph);*/
 }

@@ -3,6 +3,8 @@ A simple command line tool for generating factory plans for the game [Satisfacto
 
 This is similar other tools like [Satisfactory Tools](https://www.satisfactorytools.com/) and [Satisfactory-Calculator](https://satisfactory-calculator.com/).
 
+## Refreshing Game Database
+
 ## Plan Config
 ```yaml
 enabled_recipes:
