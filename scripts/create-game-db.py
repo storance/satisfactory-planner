@@ -3,6 +3,8 @@
 import argparse
 import json
 import re
+import sys
+from collections import OrderedDict
 from chardet.universaldetector import UniversalDetector
 
 RECIPE_CLASSES = [
@@ -64,15 +66,25 @@ def detect_encoding(file: str):
 
 def parse_item(native_class:str, definition: dict, game_db: dict):
     fluid = FORM_MAPPING[definition['mForm']] in ('liquid', 'gas')
+    # Slight hack to make FICSMAS gifts to be considered a resource
+    resource = native_class == RESOURCE_CLASS or definition['ClassName'] == 'Desc_Gift_C'
     item = {
         'key': definition['ClassName'],
         'name': definition['mDisplayName'],
-        # Slight hack to make FICSMAS gifts to be considered a resource
-        'resource': native_class == RESOURCE_CLASS or definition['ClassName'] == 'Desc_Gift_C',
+        'resource': resource,
         'state': FORM_MAPPING[definition['mForm']],
-        'sink_points' : 0 if fluid else int(definition['mResourceSinkPoints'])
+        'sink_points': 0 if fluid else int(definition['mResourceSinkPoints']),
+        'bit_mask': None if not resource else next_bit_mask()
     }
     game_db['items'].append(item)
+
+resource_number = 0
+def next_bit_mask():
+    global resource_number
+    bit_mask = 1 << resource_number
+    resource_number += 1
+
+    return bit_mask
 
 def parse_machine(definition: dict, game_db: dict):
     power = {
@@ -80,11 +92,11 @@ def parse_machine(definition: dict, game_db: dict):
     }
     if 'mEstimatedMininumPowerConsumption' in definition:
         power['type'] = 'variable'
-        power['min_mw'] = float(definition['mEstimatedMininumPowerConsumption'])
-        power['max_mw'] = float(definition['mEstimatedMaximumPowerConsumption'])
+        power['min_mw'] = int(float(definition['mEstimatedMininumPowerConsumption']))
+        power['max_mw'] = int(float(definition['mEstimatedMaximumPowerConsumption']))
     else:
         power['type'] = 'fixed'
-        power['value_mw'] = float(definition['mPowerConsumption'])
+        power['value_mw'] = int(float(definition['mPowerConsumption']))
     
     game_db['buildings'].append({
         'key': definition['ClassName'],
@@ -100,8 +112,6 @@ def parse_recipe(definition: dict, game_db: dict):
         raise ValueError(f"Recipe {definition['ClassName']} has multiple buildings: {produces_in}")
     
     check_machine_exists(game_db, produces_in[0])
-
-    
 
     recipe_key = definition['ClassName']
     display_name = definition['mDisplayName']
@@ -121,6 +131,7 @@ def parse_recipe(definition: dict, game_db: dict):
         'outputs': parse_item_list(game_db, definition['mProduct']),
         'craft_time_secs': craft_time_secs,
         'events': parse_events(definition['mRelevantEvents']),
+        'building': produces_in[0],
         'power_consumption': {
             'min_mw': power_constant,
             'max_mw': power_constant + power_factor
@@ -138,7 +149,7 @@ def parse_events(events: str):
     return [EVENT_MAPPING[event] for event in events.strip('()').split(",")]
 
 def parse_item_list(game_db: dict, value: str):
-    items = []
+    items = OrderedDict()
 
     line_start = 0
     for match in re.findall(r'(ItemClass=[^,]+\'"[^.]+\.(?P<item>[^,]+)"\',Amount=(?P<amount>\d+))', value):
@@ -149,9 +160,7 @@ def parse_item_list(game_db: dict, value: str):
         if find_item(game_db, item)['state'] != 'solid':
             amount = amount / 1000.0
 
-        items.append({
-            item: amount
-        })
+        items[item] = amount
 
     return items
 
@@ -169,11 +178,20 @@ def check_machine_exists(game_db: dict, building: str):
         
     raise ValueError(f'Building {building} is not in the game database.')
 
+def prune_unused_items(game_db):
+    used_items = set()
+    for recipe in game_db['recipes']:
+        used_items.update(recipe['inputs'].keys())
+        used_items.update(recipe['outputs'].keys())
+
+    game_db['items'] = [item for item in game_db['items'] if item['key'] in used_items]
+
 def main():
     parser = argparse.ArgumentParser('create-game-db.py', description='Reads the Docs.json from Satisfactory and ' +
-                                     'produces the db format expected by satisfactory-planner.')
+                                     'produces the json format expected by satisfactory-planner.')
     parser.add_argument('-d', '--docs-file', default='Docs.json', help='Path to Satisfactory\'s Docs.json')
-    parser.add_argument('-f', '--output-file', default='game-db.json', help='Output file for the game database.  Use - for stdout.')
+    parser.add_argument('-p', '--pretty-print', action='store_true', help='Pretty print the outputted json.')
+    parser.add_argument('-f', '--output-file', default='game-db.json', help='Output file for the game database json.  Use - for stdout.')
     
     args = parser.parse_args()
     game_db = {
@@ -217,11 +235,27 @@ def main():
             if native_class['NativeClass'] in RECIPE_CLASSES:
                 for definition in native_class['Classes']:
                     parse_recipe(definition, game_db)
+    
+    prune_unused_items(game_db)
 
     game_db['items'].sort(key=lambda item: (not item['resource'], item['name'].lower()))
     game_db['buildings'].sort(key=lambda machine: machine['name'].lower())
-    with open(args.output_file, 'w') as of:
-        json.dump(game_db, of, indent=4)
+    game_db['recipes'].sort(key=lambda recipe: recipe['name'].lower())
+
+
+    output_handle = None
+    close_handle = False
+    if args.output_file == '-':
+        output_handle = sys.stdout
+    else:
+        output_handle = open(args.output_file, 'w')
+        close_handle = True
+
+    try:
+        json.dump(game_db, output_handle, indent=4 if args.pretty_print else None)
+    finally:
+        if close_handle:
+            output_handle.close()
 
 if __name__ == '__main__':
     main()

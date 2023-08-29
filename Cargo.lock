@@ -85,6 +85,7 @@ dependencies = [
  "indexmap",
  "petgraph",
  "serde",
+ "serde_json",
  "serde_yaml",
  "thiserror",
 ]
@@ -107,6 +108,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "serde_json"
+version = "1.0.105"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "693151e1ac27563d6dbcec9dee9fbd5da8539b20fa14ad3752b2e6d363ace360"
+dependencies = [
+ "itoa",
+ "ryu",
+ "serde",
 ]
 
 [[package]]
