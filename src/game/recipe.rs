@@ -53,20 +53,36 @@ impl Recipe {
             .average_mw(self, clock_speed)
     }
 
+    #[inline]
     pub fn find_input_by_item(&self, item: &Item) -> Option<&ItemValuePair> {
         self.inputs.iter().find(|output| *output.item == *item)
     }
 
+    #[inline]
     pub fn find_output_by_item(&self, item: &Item) -> Option<&ItemValuePair> {
         self.outputs.iter().find(|output| *output.item == *item)
     }
 
+    #[inline]
     pub fn has_output_item(&self, item: &Item) -> bool {
         self.outputs.iter().any(|output| *output.item == *item)
     }
 
+    #[inline]
     pub fn has_input_item(&self, item: &Item) -> bool {
         self.inputs.iter().any(|input| *input.item == *item)
+    }
+
+    #[inline]
+    pub fn calc_buildings_for_output(&self, output: &ItemValuePair) -> Option<FloatType> {
+        self.find_output_by_item(&output.item)
+            .map(|ro| output.ratio(ro))
+    }
+
+    #[inline]
+    pub fn calc_buildings_for_input(&self, input: &ItemValuePair) -> Option<FloatType> {
+        self.find_input_by_item(&input.item)
+            .map(|ri| input.ratio(ri))
     }
 }
 

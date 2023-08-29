@@ -143,14 +143,15 @@ impl<'a> Solver<'a> {
     ) -> SolverResult<(NodeIndex, ItemValuePair)> {
         let mut remaining_output = node.desired_output.clone();
         let mut new_children: Vec<(NodeIndex, ItemValuePair)> = Vec::new();
-        for (e, c) in self.scored_graph.output_children(node.index, &node.chain) {
+        for edge_index in self.scored_graph.output_edges(node.index, &node.chain) {
             if remaining_output.value <= 0.0 {
                 break;
             }
 
+            let child_index = self.scored_graph.source_node(edge_index).unwrap();
             let child_node = MergeNode::new(
-                c,
-                self.scored_graph[e].chain.clone(),
+                child_index,
+                self.scored_graph[edge_index].chain.clone(),
                 remaining_output.clone(),
             );
             if let Ok((child_index, leftover_output)) = self.merge_optimal_path(child_node, graph) {
@@ -190,20 +191,18 @@ impl<'a> Solver<'a> {
 
         let mut min_machine_count = machine_count;
         let mut new_children_by_inputs: Vec<Vec<(NodeIndex, ItemValuePair)>> = Vec::new();
-        for (item, children) in self
-            .scored_graph
-            .production_children(node.index, &node.chain)
-        {
+        for (item, children) in self.scored_graph.production_edges(node.index, &node.chain) {
             let recipe_input = production.recipe.find_input_by_item(&item).unwrap();
             let desired_output = recipe_input.mul(machine_count);
             let mut new_children = Vec::new();
             let mut remaining_output = desired_output.clone();
 
-            for (edge_index, child_index) in children {
+            for edge_index in children {
                 if remaining_output.value <= 0.0 {
                     break;
                 }
 
+                let child_index = self.scored_graph.source_node(edge_index).unwrap();
                 let child_node = MergeNode::new(
                     child_index,
                     self.scored_graph[edge_index].chain.clone(),
