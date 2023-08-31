@@ -20,6 +20,7 @@ pub struct Item {
     pub name: String,
     pub resource: bool,
     pub state: ItemState,
+    pub energy_mj: u32,
     pub sink_points: u32,
     pub bit_mask: Option<u16>,
 }

@@ -16,6 +16,11 @@ MANUFACTURER_CLASSES = [
     "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableManufacturerVariablePower'"
 ]
 
+POWER_GENERATOR_CLASSES = [
+    "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableGeneratorFuel'",
+    "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableGeneratorNuclear'",
+]
+
 RESOURCE_CLASS = "/Script/CoreUObject.Class'/Script/FactoryGame.FGResourceDescriptor'"
 ITEM_CLASSES = [
     RESOURCE_CLASS,
@@ -101,6 +106,21 @@ BUILDING_SIZES = {
     },
 }
 
+RESOURCE_MAP_LIMITS = {
+    'Desc_OreBauxite_C': 9780.0,
+    'Desc_OreGold_C': 12040.0,
+    'Desc_Coal_C': 30900.0,
+    'Desc_OreCopper_C': 28860.0,
+    'Desc_LiquidOil_C': 11700.0,
+    'Desc_OreIron_C': 70380.0,
+    'Desc_Stone_C': 52860.0,
+    'Desc_NitrogenGas_C': 12000.0,
+    'Desc_RawQuartz_C': 10500.0,
+    'Desc_Sulfur_C': 6840.0,
+    'Desc_OreUranium_C': 2100.0,
+    'Desc_Water_C': 9007199254740991.0
+}
+
 def detect_encoding(file: str):
     detector = UniversalDetector()
     with open(file, 'rb') as f:
@@ -113,18 +133,32 @@ def detect_encoding(file: str):
         return detector.result['encoding']
 
 def parse_item(native_class:str, definition: dict, game_db: dict):
+    match = re.match(r'^.+\'[^.]+\.(.+)\'$', native_class)
+    if match is None:
+        raise ValueError(f"Could not parse descriptor from {native_class}")
+    descriptor = match.group(1)
+
     fluid = FORM_MAPPING[definition['mForm']] in ('liquid', 'gas')
     # Slight hack to make FICSMAS gifts to be considered a resource
-    resource = native_class == RESOURCE_CLASS or definition['ClassName'] == 'Desc_Gift_C'
+    resource = native_class == RESOURCE_CLASS
+    energy = float(definition['mEnergyValue'])
+    # for fluids, the energy value is per liter of fluid but we want per cubic meter
+    if fluid:
+        energy *= 1000
+    
     item = {
         'key': definition['ClassName'],
         'name': definition['mDisplayName'],
         'resource': resource,
         'state': FORM_MAPPING[definition['mForm']],
         'sink_points': 0 if fluid else int(definition['mResourceSinkPoints']),
+        'energy_mj': energy,
         'bit_mask': None if not resource else next_bit_mask()
     }
     game_db['items'].append(item)
+    if descriptor not in game_db['items_by_descriptor']:
+        game_db['items_by_descriptor'][descriptor] = []
+    game_db['items_by_descriptor'][descriptor].append(item)
 
 resource_number = 0
 def next_bit_mask():
@@ -134,7 +168,7 @@ def next_bit_mask():
 
     return bit_mask
 
-def parse_machine(definition: dict, game_db: dict):
+def parse_manufacturer_building(definition: dict, game_db: dict):
     power = {
         'exponent': float(definition['mPowerConsumptionExponent'])
     }
@@ -148,11 +182,93 @@ def parse_machine(definition: dict, game_db: dict):
     
     building_key = definition['ClassName'].replace('Build_', 'Desc_')
     game_db['buildings'].append({
+        'type': 'manufacturer',
         'key': building_key,
         'name': definition['mDisplayName'],
         'power_consumption' : power,
         'dimensions' : BUILDING_SIZES.get(building_key)
     })
+
+def parse_power_generator_building(definition: dict, game_db: dict):
+    building_key = definition['ClassName'].replace('Build_', 'Desc_')
+    supplemental_ratio = float(definition['mSupplementalToPowerRatio'])
+    power_production = int(float(definition['mPowerProduction']))
+    game_db['buildings'].append({
+        'type': 'power_generator',
+        'key': building_key,
+        'name': definition['mDisplayName'],
+        'fuels': parse_fuels(definition['mFuel'], supplemental_ratio, power_production, game_db),
+        'power_production_mw': power_production,
+        'dimensions' : None
+    })
+
+def parse_fuels(fuels, supplemental_ratio: float, power_production: int, game_db: dict) -> list:
+    parsed_fuels = []
+
+    for fuel in fuels:
+        fuel_item_key = fuel['mFuelClass']
+        supplemental_item_key = fuel['mSupplementalResourceClass']
+        by_product_item_key = fuel['mByproduct']
+        by_product_amount = fuel['mByproductAmount']
+
+        if fuel_item_key in game_db['items_by_descriptor']:
+            for fuel_item in game_db['items_by_descriptor'][fuel_item_key]:
+                parsed_fuel = build_fuel(fuel_item,
+                                         supplemental_item_key,
+                                         by_product_item_key,
+                                         by_product_amount,
+                                         supplemental_ratio,
+                                         power_production,
+                                         game_db)
+                if parsed_fuel is not None:
+                    parsed_fuels.append(parsed_fuel)
+        else:
+            parsed_fuel = build_fuel(find_item(game_db, fuel_item_key),
+                                     supplemental_item_key,
+                                     by_product_item_key,
+                                     by_product_amount,
+                                     supplemental_ratio,
+                                     power_production,
+                                     game_db)
+            if parsed_fuel is not None:
+                parsed_fuels.append(parsed_fuel)
+
+    return parsed_fuels
+
+def build_fuel(fuel_item,
+               supplemental_item_key,
+               by_product_item_key,
+               by_product_amount,
+               supplemental_ratio,
+               power_production,
+               game_db):
+    if fuel_item['energy_mj'] == 0:
+        return None
+    
+    fuel = {
+        'inputs': OrderedDict(),
+        'burn_time_secs' : fuel_item['energy_mj'] / power_production
+    }
+    
+    fuel['inputs'][fuel_item['key']] = 1
+
+    if supplemental_item_key not in [None, ""]:
+        supplemental_item = find_item(game_db, supplemental_item_key)
+        amount = fuel_item['energy_mj'] * supplemental_ratio
+        if supplemental_item['state'] != 'solid':
+            amount /= 1000
+
+        fuel['inputs'][supplemental_item_key] = amount
+    
+    if by_product_item_key not in [None, ""] and by_product_amount not in [None, ""]:
+        by_product_item = find_item(game_db, by_product_item_key)
+        amount = float(by_product_amount)
+        if by_product_item['state'] != 'solid':
+            amount /= 1000
+
+        fuel['outputs'] = {by_product_item_key: float(by_product_amount)}
+
+    return fuel
 
 def parse_recipe(definition: dict, game_db: dict):
     produces_in = [building for building in parse_produce_in(definition) if building not in FILTER_BUILDINGS]
@@ -162,7 +278,7 @@ def parse_recipe(definition: dict, game_db: dict):
         raise ValueError(f"Recipe {definition['ClassName']} has multiple buildings: {produces_in}")
     
     produces_in = [building.replace('Build_', 'Desc_') for building in produces_in]
-    check_machine_exists(game_db, produces_in[0])
+    check_building_exists(game_db, produces_in[0])
 
     recipe_key = definition['ClassName']
     display_name = definition['mDisplayName']
@@ -220,9 +336,9 @@ def find_item(game_db: dict, item: str):
         if entry['key'] == item:
             return entry
         
-    raise ValueError(f'Item {item} is not in the game database.')
+    raise ValueError(f'Item `{item}` is not in the game database.')
 
-def check_machine_exists(game_db: dict, building: str):
+def check_building_exists(game_db: dict, building: str):
     for entry in game_db['buildings']:
         if entry['key'] == building:
             return
@@ -231,6 +347,13 @@ def check_machine_exists(game_db: dict, building: str):
 
 def prune_unused_items(game_db):
     used_items = set()
+    for building in game_db['buildings']:
+        if 'fuels' in building:
+            for fuel in building['fuels']:
+                used_items.update(fuel['inputs'].keys())
+                if 'outputs' in fuel:
+                    used_items.update(fuel['outputs'].keys())
+
     for recipe in game_db['recipes']:
         used_items.update(recipe['inputs'].keys())
         used_items.update(recipe['outputs'].keys())
@@ -251,36 +374,31 @@ def main():
             'Desc_GasTank_C'
         ],
         'items': [],
+        'items_by_descriptor': {},
         'buildings': [],
         'recipes': [],
-        'resource_limits': {
-            'Desc_OreBauxite_C': 9780.0,
-            'Desc_OreGold_C': 12040.0,
-            'Desc_Coal_C': 30900.0,
-            'Desc_OreCopper_C': 28860.0,
-            'Desc_LiquidOil_C': 11700.0,
-            'Desc_OreIron_C': 70380.0,
-            'Desc_Stone_C': 52860.0,
-            'Desc_NitrogenGas_C': 12000.0,
-            'Desc_RawQuartz_C': 10500.0,
-            'Desc_Sulfur_C': 6840.0,
-            'Desc_OreUranium_C': 2100.0,
-            'Desc_Water_C': 9007199254740991.0,
-            'Desc_Gift_C': 3.402823466e38
-        }
+        'resource_limits': RESOURCE_MAP_LIMITS
     }
     encoding = detect_encoding(args.docs_file)
     with open(args.docs_file, encoding=encoding) as df:
         native_classes = json.load(df)
 
+        # First pass parse items
+        for native_class in native_classes:
+            if native_class['NativeClass'] in ITEM_CLASSES:
+                for definition in native_class['Classes']:
+                    parse_item(native_class['NativeClass'], definition, game_db)
+        
+        # second pass parse buildings
         for native_class in native_classes:
             if native_class['NativeClass'] in MANUFACTURER_CLASSES:
                 for definition in native_class['Classes']:
-                    parse_machine(definition, game_db)
-            elif native_class['NativeClass'] in ITEM_CLASSES:
+                    parse_manufacturer_building(definition, game_db)
+            elif native_class['NativeClass'] in POWER_GENERATOR_CLASSES:
                 for definition in native_class['Classes']:
-                    parse_item(native_class['NativeClass'], definition, game_db)
+                    parse_power_generator_building(definition, game_db)
 
+        # third pass parse recipes
         for native_class in native_classes:
             parser = None
             if native_class['NativeClass'] in RECIPE_CLASSES:
@@ -292,7 +410,7 @@ def main():
     game_db['items'].sort(key=lambda item: (not item['resource'], item['name'].lower()))
     game_db['buildings'].sort(key=lambda machine: machine['name'].lower())
     game_db['recipes'].sort(key=lambda recipe: recipe['name'].lower())
-
+    del game_db['items_by_descriptor']
 
     output_handle = None
     close_handle = False

@@ -1,13 +1,16 @@
+use core::panic;
 use std::{
     fmt,
     hash::{Hash, Hasher},
+    rc::Rc,
 };
 
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use crate::utils::FloatType;
 
-use super::Recipe;
+use super::{Item, ItemValuePair, Recipe};
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -30,7 +33,7 @@ pub struct Dimensions {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Building {
+pub struct Manufacturer {
     pub key: String,
     pub name: String,
     pub power_consumption: PowerConsumption,
@@ -38,32 +41,207 @@ pub struct Building {
     pub dimensions: Option<Dimensions>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) struct FuelDefinition {
+    pub inputs: IndexMap<String, FloatType>,
+    #[serde(default)]
+    pub outputs: IndexMap<String, FloatType>,
+    pub burn_time_secs: FloatType,
+}
+
+#[derive(Debug, Clone)]
+pub struct Fuel {
+    pub inputs: Vec<ItemValuePair>,
+    pub outputs: Vec<ItemValuePair>,
+    pub burn_time_secs: FloatType,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) struct PowerGeneratorDefinition {
+    pub key: String,
+    pub name: String,
+    pub power_production_mw: u32,
+    pub fuels: Vec<FuelDefinition>,
+    #[serde(default)]
+    pub dimensions: Option<Dimensions>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PowerGenerator {
+    pub key: String,
+    pub name: String,
+    pub power_production_mw: u32,
+    pub fuels: Vec<Fuel>,
+    pub dimensions: Option<Dimensions>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) struct ResourceExtractorDefinition {
+    pub key: String,
+    pub name: String,
+    pub power_consumption: PowerConsumption,
+    pub extraction_rate: FloatType,
+    pub allowed_resources: Vec<String>,
+    #[serde(default)]
+    pub dimensions: Option<Dimensions>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResourceExtractor {
+    pub key: String,
+    pub name: String,
+    pub power_consumption: PowerConsumption,
+    pub extraction_rate: FloatType,
+    pub allowed_resources: Vec<Rc<Item>>,
+    pub dimensions: Option<Dimensions>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ItemProducerDefinition {
+    pub key: String,
+    pub name: String,
+    pub power_consumption: PowerConsumption,
+    pub craft_time_secs: FloatType,
+    pub outputs: IndexMap<String, FloatType>,
+    pub dimensions: Option<Dimensions>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ItemProducer {
+    pub key: String,
+    pub name: String,
+    pub power_consumption: PowerConsumption,
+    pub craft_time_secs: FloatType,
+    pub outputs: Vec<ItemValuePair>,
+    pub dimensions: Option<Dimensions>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub(super) enum BuildingDefinition {
+    #[serde(rename = "manufacturer")]
+    Manufacturer(Manufacturer),
+    #[serde(rename = "power_generator")]
+    PowerGenerator(PowerGeneratorDefinition),
+    #[serde(rename = "resource_extractor")]
+    ResourceExtractor(ResourceExtractorDefinition),
+    #[serde(rename = "item_producer")]
+    ItemProducer(ItemProducerDefinition),
+}
+
+#[derive(Debug, Clone)]
+pub enum Building {
+    Manufacturer(Manufacturer),
+    PowerGenerator(PowerGenerator),
+    ResourceExtractor(ResourceExtractor),
+    ItemProducer(ItemProducer),
+}
+
 #[allow(dead_code)]
 impl Building {
+    pub fn key(&self) -> &str {
+        match self {
+            Self::Manufacturer(m) => &m.key,
+            Self::PowerGenerator(pg) => &pg.key,
+            Self::ResourceExtractor(re) => &re.key,
+            Self::ItemProducer(ip) => &ip.key,
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Manufacturer(m) => &m.name,
+            Self::PowerGenerator(pg) => &pg.name,
+            Self::ResourceExtractor(re) => &re.name,
+            Self::ItemProducer(ip) => &ip.name,
+        }
+    }
+
+    pub fn dimensions(&self) -> Option<&Dimensions> {
+        match self {
+            Self::Manufacturer(m) => m.dimensions.as_ref(),
+            Self::PowerGenerator(pg) => pg.dimensions.as_ref(),
+            Self::ResourceExtractor(re) => re.dimensions.as_ref(),
+            Self::ItemProducer(ip) => ip.dimensions.as_ref(),
+        }
+    }
+
     pub fn volume(&self) -> FloatType {
-        self.dimensions.map(|d| d.volume()).unwrap_or(0.0)
+        self.dimensions().map(|d| d.volume()).unwrap_or(0.0)
     }
 
     pub fn floor_area(&self) -> FloatType {
-        self.dimensions.map(|d| d.floor_area()).unwrap_or(0.0)
+        self.dimensions().map(|d| d.floor_area()).unwrap_or(0.0)
+    }
+
+    pub fn is_manufacturer(&self) -> bool {
+        matches!(self, Self::Manufacturer(..))
+    }
+
+    pub fn as_manufacturer(&self) -> &Manufacturer {
+        match self {
+            Self::Manufacturer(m) => m,
+            _ => {
+                panic!("Building is not a Manufacturer")
+            }
+        }
+    }
+
+    pub fn is_power_generator(&self) -> bool {
+        matches!(self, Self::Manufacturer(..))
+    }
+
+    pub fn as_power_generator(&self) -> &PowerGenerator {
+        match self {
+            Self::PowerGenerator(pg) => pg,
+            _ => {
+                panic!("Building is not a PowerGenerator")
+            }
+        }
+    }
+
+    pub fn is_resource_extractor(&self) -> bool {
+        matches!(self, Self::Manufacturer(..))
+    }
+
+    pub fn as_resource_extractor(&self) -> &ResourceExtractor {
+        match self {
+            Self::ResourceExtractor(re) => re,
+            _ => {
+                panic!("Building is not a ResourceExtractor")
+            }
+        }
+    }
+
+    pub fn is_item_producer(&self) -> bool {
+        matches!(self, Self::ItemProducer(..))
+    }
+
+    pub fn as_item_producer(&self) -> &ItemProducer {
+        match self {
+            Self::ItemProducer(ip) => ip,
+            _ => {
+                panic!("Building is not a ItemProducer")
+            }
+        }
     }
 }
 
 impl fmt::Display for Building {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.name)
+        write!(f, "{}", self.name())
     }
 }
 
 impl Hash for Building {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.key.hash(state);
+        self.key().hash(state);
     }
 }
 
 impl PartialEq for Building {
     fn eq(&self, other: &Self) -> bool {
-        self.key == other.key
+        self.key() == other.key()
     }
 }
 

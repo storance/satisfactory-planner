@@ -140,7 +140,6 @@ pub mod test {
         let nitrogen_gas = game_db.find_item("Desc_NitrogenGas_C").unwrap();
         let sulfur = game_db.find_item("Desc_Sulfur_C").unwrap();
         let uranium = game_db.find_item("Desc_OreUranium_C").unwrap();
-        let gift = game_db.find_item("Desc_Gift_C").unwrap();
         let coal = game_db.find_item("Desc_Coal_C").unwrap();
         let bauxite = game_db.find_item("Desc_OreBauxite_C").unwrap();
 
@@ -158,6 +157,5 @@ pub mod test {
         assert!(!bit_set.contains(&bauxite));
         assert!(!bit_set.contains(&raw_quartz));
         assert!(!bit_set.contains(&limestone));
-        assert!(!bit_set.contains(&gift));
     }
 }

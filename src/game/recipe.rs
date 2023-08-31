@@ -49,6 +49,7 @@ pub struct Recipe {
 impl Recipe {
     pub fn average_mw(&self, clock_speed: FloatType) -> FloatType {
         self.building
+            .as_manufacturer()
             .power_consumption
             .average_mw(self, clock_speed)
     }
