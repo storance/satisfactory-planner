@@ -4,13 +4,11 @@ use std::{
     hash::{Hash, Hasher},
     rc::Rc,
 };
-
-use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use crate::utils::FloatType;
 
-use super::{Item, ItemValuePair, Recipe};
+use super::{Item, ItemValuePair, Recipe, item_value_pair::ItemAmount};
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -43,16 +41,19 @@ pub struct Manufacturer {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct FuelDefinition {
-    pub inputs: IndexMap<String, FloatType>,
+    pub fuel: ItemAmount,
     #[serde(default)]
-    pub outputs: IndexMap<String, FloatType>,
+    pub supplemental: Option<ItemAmount>,
+    #[serde(default)]
+    pub by_product: Option<ItemAmount>,
     pub burn_time_secs: FloatType,
 }
 
 #[derive(Debug, Clone)]
 pub struct Fuel {
-    pub inputs: Vec<ItemValuePair>,
-    pub outputs: Vec<ItemValuePair>,
+    pub fuel: ItemValuePair,
+    pub supplemental: Option<ItemValuePair>,
+    pub by_product: Option<ItemValuePair>,
     pub burn_time_secs: FloatType,
 }
 
@@ -82,6 +83,7 @@ pub(super) struct ResourceExtractorDefinition {
     pub power_consumption: PowerConsumption,
     pub extraction_rate: FloatType,
     pub allowed_resources: Vec<String>,
+    pub extractor_type: Option<String>,
     #[serde(default)]
     pub dimensions: Option<Dimensions>,
 }
@@ -93,6 +95,7 @@ pub struct ResourceExtractor {
     pub power_consumption: PowerConsumption,
     pub extraction_rate: FloatType,
     pub allowed_resources: Vec<Rc<Item>>,
+    pub extractor_type: Option<String>,
     pub dimensions: Option<Dimensions>,
 }
 
@@ -102,7 +105,7 @@ pub struct ItemProducerDefinition {
     pub name: String,
     pub power_consumption: PowerConsumption,
     pub craft_time_secs: FloatType,
-    pub outputs: IndexMap<String, FloatType>,
+    pub output: ItemAmount,
     pub dimensions: Option<Dimensions>,
 }
 
@@ -112,7 +115,7 @@ pub struct ItemProducer {
     pub name: String,
     pub power_consumption: PowerConsumption,
     pub craft_time_secs: FloatType,
-    pub outputs: Vec<ItemValuePair>,
+    pub output: ItemValuePair,
     pub dimensions: Option<Dimensions>,
 }
 

@@ -1,3 +1,5 @@
+use ::serde::{Serialize, Deserialize};
+
 use crate::utils::{FloatType, EPSILON};
 use std::fmt;
 use std::fmt::Debug;
@@ -5,6 +7,12 @@ use std::ops::{Add, AddAssign, Neg, Sub, SubAssign};
 use std::rc::Rc;
 
 use super::Item;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ItemAmount {
+    pub item: String,
+    pub amount: FloatType
+}
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct ItemValuePair {

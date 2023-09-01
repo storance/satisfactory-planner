@@ -1,14 +1,11 @@
-use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
     hash::{Hash, Hasher},
     rc::Rc,
 };
-
 use crate::utils::FloatType;
-
-use super::{Building, Item, ItemValuePair};
+use super::{Building, Item, ItemValuePair, item_value_pair::ItemAmount};
 
 #[derive(Debug, Default, Copy, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RecipePower {
@@ -22,8 +19,8 @@ pub(super) struct RecipeDefinition {
     pub name: String,
     #[serde(default)]
     pub alternate: bool,
-    pub outputs: IndexMap<String, FloatType>,
-    pub inputs: IndexMap<String, FloatType>,
+    pub outputs: Vec<ItemAmount>,
+    pub inputs: Vec<ItemAmount>,
     pub craft_time_secs: FloatType,
     #[serde(default)]
     pub events: Vec<String>,

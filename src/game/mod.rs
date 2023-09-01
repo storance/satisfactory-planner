@@ -3,7 +3,6 @@ pub mod item;
 pub mod item_value_pair;
 pub mod recipe;
 
-use indexmap::IndexMap;
 use recipe::RecipeDefinition;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs::File, path::Path, rc::Rc};
@@ -16,7 +15,10 @@ pub use recipe::Recipe;
 
 use crate::utils::FloatType;
 
-use self::building::{BuildingDefinition, Fuel, ItemProducer, PowerGenerator, ResourceExtractor};
+use self::{
+    building::{BuildingDefinition, Fuel, ItemProducer, PowerGenerator, ResourceExtractor},
+    item_value_pair::ItemAmount,
+};
 
 #[derive(Error, Debug, Eq, PartialEq)]
 pub enum GameDatabaseError {
@@ -119,8 +121,15 @@ impl GameDatabase {
                 for fuel in pg.fuels {
                     let cycles_per_min = 60.0 / fuel.burn_time_secs;
                     fuels.push(Fuel {
-                        inputs: Self::convert_item_amounts(fuel.inputs, cycles_per_min, items)?,
-                        outputs: Self::convert_item_amounts(fuel.outputs, cycles_per_min, items)?,
+                        fuel: Self::convert_item_amount(&fuel.fuel, cycles_per_min, items)?,
+                        supplemental: fuel
+                            .supplemental
+                            .map(|i| Self::convert_item_amount(&i, cycles_per_min, items))
+                            .transpose()?,
+                        by_product: fuel
+                            .by_product
+                            .map(|i| Self::convert_item_amount(&i, cycles_per_min, items))
+                            .transpose()?,
                         burn_time_secs: fuel.burn_time_secs,
                     });
                 }
@@ -144,6 +153,7 @@ impl GameDatabase {
                     name: re.name,
                     extraction_rate: re.extraction_rate,
                     allowed_resources,
+                    extractor_type: re.extractor_type,
                     power_consumption: re.power_consumption,
                     dimensions: re.dimensions,
                 })
@@ -154,7 +164,7 @@ impl GameDatabase {
                     key: ip.key,
                     name: ip.name,
                     craft_time_secs: ip.craft_time_secs,
-                    outputs: Self::convert_item_amounts(ip.outputs, crafts_per_min, items)?,
+                    output: Self::convert_item_amount(&ip.output, crafts_per_min, items)?,
                     power_consumption: ip.power_consumption,
                     dimensions: ip.dimensions,
                 })
@@ -185,12 +195,24 @@ impl GameDatabase {
         }
 
         let crafts_per_min = 60.0 / recipe.craft_time_secs;
+        let inputs = recipe
+            .inputs
+            .iter()
+            .map(|i| Self::convert_item_amount(i, crafts_per_min, items))
+            .collect::<Result<Vec<ItemValuePair>, GameDatabaseError>>()?;
+
+        let outputs = recipe
+            .outputs
+            .iter()
+            .map(|o| Self::convert_item_amount(o, crafts_per_min, items))
+            .collect::<Result<Vec<ItemValuePair>, GameDatabaseError>>()?;
+
         Ok(Rc::new(Recipe {
             key: recipe.key,
             name: recipe.name,
             alternate: recipe.alternate,
-            inputs: Self::convert_item_amounts(recipe.inputs, crafts_per_min, items)?,
-            outputs: Self::convert_item_amounts(recipe.outputs, crafts_per_min, items)?,
+            inputs,
+            outputs,
             craft_time_secs: recipe.craft_time_secs,
             events: recipe.events,
             building,
@@ -198,20 +220,15 @@ impl GameDatabase {
         }))
     }
 
-    pub fn convert_item_amounts(
-        item_amounts: IndexMap<String, FloatType>,
+    pub fn convert_item_amount(
+        item_amount: &ItemAmount,
         cycles_per_min: FloatType,
         items: &[Rc<Item>],
-    ) -> Result<Vec<ItemValuePair>, GameDatabaseError> {
-        let mut item_value_pairs = Vec::new();
-        for (item_key, amount) in item_amounts {
-            item_value_pairs.push(ItemValuePair::new(
-                Self::find_item_by_key(&item_key, items)?,
-                amount * cycles_per_min,
-            ));
-        }
-
-        Ok(item_value_pairs)
+    ) -> Result<ItemValuePair, GameDatabaseError> {
+        Ok(ItemValuePair::new(
+            Self::find_item_by_key(&item_amount.item, items)?,
+            item_amount.amount * cycles_per_min,
+        ))
     }
 
     pub fn filter<F>(&self, predicate: F) -> Self
@@ -232,6 +249,7 @@ impl GameDatabase {
         }
     }
 
+    #[inline]
     pub fn find_recipe(&self, name_or_key: &str) -> Option<Rc<Recipe>> {
         self.recipes
             .iter()
@@ -239,6 +257,7 @@ impl GameDatabase {
             .cloned()
     }
 
+    #[inline]
     pub fn find_item(&self, name_or_key: &str) -> Option<Rc<Item>> {
         self.items
             .iter()
