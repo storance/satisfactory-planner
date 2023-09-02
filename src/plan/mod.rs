@@ -10,7 +10,7 @@ pub use graph::*;
 pub use scored_graph::*;
 pub use solver::*;
 
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct ItemBitSet(u16);
 
@@ -46,6 +46,24 @@ impl ItemBitSet {
     #[inline]
     pub fn len(&self) -> usize {
         u16::count_ones(self.0) as usize
+    }
+}
+
+impl PartialOrd for ItemBitSet {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(
+            self.len()
+                .cmp(&other.len())
+                .then_with(|| self.0.cmp(&other.0)),
+        )
+    }
+}
+
+impl Ord for ItemBitSet {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.len()
+            .cmp(&other.len())
+            .then_with(|| self.0.cmp(&other.0))
     }
 }
 

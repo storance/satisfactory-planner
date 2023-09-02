@@ -2,13 +2,11 @@ use crate::{
     game::{Item, ItemValuePair, Recipe},
     utils::{round, FloatType},
 };
-use petgraph::{dot::Dot, graph::NodeIndex};
-use petgraph::{
-    stable_graph::{EdgeIndex, StableDiGraph},
-    visit::EdgeRef,
-    Direction::Incoming,
-};
+use petgraph::stable_graph::{NodeIndex, StableDiGraph};
+use petgraph::{dot::Dot, Direction};
 use std::{fmt, rc::Rc};
+
+pub type GraphType = StableDiGraph<NodeValue, NodeEdge>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Production {
@@ -24,22 +22,43 @@ pub enum NodeValue {
     Production(Production),
 }
 
-pub type GraphType = StableDiGraph<NodeValue, NodeEdge>;
+#[derive(Debug, Clone, PartialEq)]
+pub struct NodeEdge {
+    pub value: ItemValuePair,
+    pub order: u32,
+}
+
+pub trait Node {
+    fn is_input(&self) -> bool;
+    fn is_input_resource(&self) -> bool;
+    fn is_output(&self) -> bool;
+    fn is_by_product(&self) -> bool;
+    fn is_production(&self) -> bool;
+
+    fn is_input_for_item(&self, item: &Item) -> bool;
+    fn is_output_for_item(&self, item: &Item) -> bool;
+    fn is_by_product_for_item(&self, item: &Item) -> bool;
+    fn is_production_for_recipe(&self, recipe: &Recipe) -> bool;
+}
 
 #[allow(dead_code)]
 impl NodeValue {
+    #[inline]
     pub fn new_input(input: ItemValuePair) -> Self {
         NodeValue::Input(input)
     }
 
+    #[inline]
     pub fn new_output(output: ItemValuePair) -> Self {
         NodeValue::Output(output)
     }
 
+    #[inline]
     pub fn new_by_product(output: ItemValuePair) -> Self {
         NodeValue::ByProduct(output)
     }
 
+    #[inline]
     pub fn new_production(recipe: Rc<Recipe>, machine_count: FloatType) -> Self {
         NodeValue::Production(Production {
             recipe,
@@ -47,22 +66,7 @@ impl NodeValue {
         })
     }
 
-    pub fn is_input(&self) -> bool {
-        matches!(self, NodeValue::Input(..))
-    }
-
-    pub fn is_output(&self) -> bool {
-        matches!(self, NodeValue::Output(..))
-    }
-
-    pub fn is_by_product(&self) -> bool {
-        matches!(self, NodeValue::ByProduct(..))
-    }
-
-    pub fn is_production(&self) -> bool {
-        matches!(self, NodeValue::Production(..))
-    }
-
+    #[inline]
     pub fn as_input(&self) -> &ItemValuePair {
         match self {
             NodeValue::Input(input) => input,
@@ -70,6 +74,7 @@ impl NodeValue {
         }
     }
 
+    #[inline]
     pub fn as_input_mut(&mut self) -> &mut ItemValuePair {
         match self {
             NodeValue::Input(input) => input,
@@ -77,6 +82,7 @@ impl NodeValue {
         }
     }
 
+    #[inline]
     pub fn as_output(&self) -> &ItemValuePair {
         match self {
             NodeValue::Output(output) => output,
@@ -84,6 +90,7 @@ impl NodeValue {
         }
     }
 
+    #[inline]
     pub fn as_output_mut(&mut self) -> &mut ItemValuePair {
         match self {
             NodeValue::Output(output) => output,
@@ -91,6 +98,7 @@ impl NodeValue {
         }
     }
 
+    #[inline]
     pub fn as_by_product(&self) -> &ItemValuePair {
         match self {
             NodeValue::ByProduct(output) => output,
@@ -98,6 +106,7 @@ impl NodeValue {
         }
     }
 
+    #[inline]
     pub fn as_by_product_mut(&mut self) -> &mut ItemValuePair {
         match self {
             NodeValue::ByProduct(output) => output,
@@ -105,6 +114,7 @@ impl NodeValue {
         }
     }
 
+    #[inline]
     pub fn as_production(&self) -> &Production {
         match self {
             NodeValue::Production(production) => production,
@@ -112,11 +122,59 @@ impl NodeValue {
         }
     }
 
+    #[inline]
     pub fn as_production_mut(&mut self) -> &mut Production {
         match self {
             NodeValue::Production(production) => production,
             _ => panic!("NodeValue is not Production"),
         }
+    }
+}
+
+impl Node for NodeValue {
+    #[inline]
+    fn is_input(&self) -> bool {
+        matches!(self, NodeValue::Input(..))
+    }
+
+    #[inline]
+    fn is_input_resource(&self) -> bool {
+        matches!(self, NodeValue::Input(i) if i.item.resource)
+    }
+
+    #[inline]
+    fn is_output(&self) -> bool {
+        matches!(self, NodeValue::Output(..))
+    }
+
+    #[inline]
+    fn is_by_product(&self) -> bool {
+        matches!(self, NodeValue::ByProduct(..))
+    }
+
+    #[inline]
+    fn is_production(&self) -> bool {
+        matches!(self, NodeValue::Production(..))
+    }
+
+    #[inline]
+    fn is_input_for_item(&self, item: &Item) -> bool {
+        matches!(self, NodeValue::Input(i) if *i.item == *item)
+    }
+
+    #[inline]
+    fn is_output_for_item(&self, item: &Item) -> bool {
+        matches!(self, NodeValue::Output(i) if *i.item == *item)
+    }
+
+    #[inline]
+    fn is_by_product_for_item(&self, item: &Item) -> bool {
+        matches!(self, NodeValue::ByProduct(i) if *i.item == *item)
+    }
+
+    #[inline]
+    fn is_production_for_recipe(&self, recipe: &Recipe) -> bool {
+        matches!(self, NodeValue::Production(p) if *p.recipe == *recipe)
     }
 }
 
@@ -160,13 +218,8 @@ impl fmt::Display for NodeValue {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct NodeEdge {
-    pub value: ItemValuePair,
-    pub order: u32,
-}
-
 impl NodeEdge {
+    #[inline]
     pub fn new(value: ItemValuePair, order: u32) -> Self {
         Self { value, order }
     }
@@ -193,76 +246,94 @@ impl fmt::Display for NodeEdge {
     }
 }
 
-pub fn find_input_node<E>(graph: &StableDiGraph<NodeValue, E>, item: &Item) -> Option<NodeIndex> {
-    graph.node_indices().find(|i| match &graph[*i] {
-        NodeValue::Input(input) => *item == *input.item,
-        _ => false,
-    })
+#[inline]
+pub fn find_input_node<N: Node, E>(graph: &StableDiGraph<N, E>, item: &Item) -> Option<NodeIndex> {
+    graph
+        .node_indices()
+        .find(|i| graph[*i].is_input_for_item(item))
 }
 
-pub fn find_production_node<E>(
-    graph: &StableDiGraph<NodeValue, E>,
+#[inline]
+pub fn find_production_node<N: Node, E>(
+    graph: &StableDiGraph<N, E>,
     recipe: &Recipe,
 ) -> Option<NodeIndex> {
-    graph.node_indices().find(|i| match &graph[*i] {
-        NodeValue::Production(production) => *production.recipe == *recipe,
-        _ => false,
-    })
+    graph
+        .node_indices()
+        .find(|i| graph[*i].is_production_for_recipe(recipe))
 }
 
-pub fn find_output_node<E>(graph: &StableDiGraph<NodeValue, E>, item: &Item) -> Option<NodeIndex> {
-    graph.node_indices().find(|i| match &graph[*i] {
-        NodeValue::Output(output) => *item == *output.item,
-        _ => false,
-    })
+#[inline]
+pub fn find_output_node<N: Node, E>(graph: &StableDiGraph<N, E>, item: &Item) -> Option<NodeIndex> {
+    graph
+        .node_indices()
+        .find(|i| graph[*i].is_output_for_item(item))
+}
+
+#[inline]
+pub fn find_by_product_node<N: Node, E>(
+    graph: &StableDiGraph<N, E>,
+    item: &Item,
+) -> Option<NodeIndex> {
+    graph
+        .node_indices()
+        .find(|i| graph[*i].is_by_product_for_item(item))
+}
+
+/// Determines if the target is reachable from the source node by traveling in the given direction.
+#[allow(dead_code)]
+pub fn is_reachable<N, E>(
+    graph: &StableDiGraph<N, E>,
+    source: NodeIndex,
+    target: NodeIndex,
+    dir: Direction,
+) -> bool {
+    let mut visited = vec![];
+    is_reachable_internal(graph, source, target, dir, &mut visited)
 }
 
 #[allow(dead_code)]
-pub fn find_by_product_node<E>(
-    graph: &StableDiGraph<NodeValue, E>,
-    item: &Item,
-) -> Option<NodeIndex> {
-    graph.node_indices().find(|i| match &graph[*i] {
-        NodeValue::ByProduct(output) => *item == *output.item,
-        _ => false,
-    })
+fn is_reachable_internal<N, E>(
+    graph: &StableDiGraph<N, E>,
+    source: NodeIndex,
+    target: NodeIndex,
+    dir: Direction,
+    visited: &mut Vec<NodeIndex>,
+) -> bool {
+    if source == target {
+        return true;
+    } else if visited.contains(&source) {
+        return false;
+    }
+    visited.push(source);
+
+    for neighbor in graph.neighbors_directed(source, dir) {
+        if is_reachable_internal(graph, neighbor, target, dir, visited) {
+            return true;
+        }
+    }
+
+    false
 }
 
-pub fn find_by_product_child<E>(
-    node_index: NodeIndex,
-    graph: &StableDiGraph<NodeValue, E>,
-) -> (EdgeIndex, NodeIndex) {
-    assert!(graph[node_index].is_by_product());
-
-    let edge = graph
-        .edges_directed(node_index, Incoming)
-        .next()
-        .unwrap_or_else(|| {
-            panic!(
-                "ByProduct node {:?} is missing it's Production node child",
-                graph[node_index]
-            )
-        });
-    (edge.id(), edge.source())
-}
-
-pub fn print_graph<E: fmt::Display>(graph: &StableDiGraph<NodeValue, E>) {
+pub fn print_graph<N: Node + fmt::Display, E: fmt::Display>(graph: &StableDiGraph<N, E>) {
     println!(
         "{}",
         format!(
             "{}",
             Dot::with_attr_getters(&graph, &[], &|_, _| String::new(), &|_, n| {
-                let color = match n.1 {
-                    NodeValue::Input(input) => {
-                        if input.item.resource {
-                            "lightslategray"
-                        } else {
-                            "peru"
-                        }
-                    }
-                    NodeValue::Output(..) => "mediumseagreen",
-                    NodeValue::ByProduct(..) => "cornflowerblue",
-                    NodeValue::Production(..) => "darkorange",
+                let color = if n.1.is_input_resource() {
+                    "lightslategray"
+                } else if n.1.is_input() {
+                    "peru"
+                } else if n.1.is_output() {
+                    "mediumseagreen"
+                } else if n.1.is_by_product() {
+                    "cornflowerblue"
+                } else if n.1.is_production() {
+                    "darkorange"
+                } else {
+                    "white"
                 };
 
                 format!(

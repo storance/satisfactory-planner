@@ -68,6 +68,13 @@ impl Recipe {
         self.outputs.iter().any(|output| *output.item == *item)
     }
 
+    pub fn is_primary_output(&self, item: &Item) -> bool {
+        self.outputs
+            .first()
+            .map(|o| *o.item == *item)
+            .unwrap_or(false)
+    }
+
     #[inline]
     pub fn has_input_item(&self, item: &Item) -> bool {
         self.inputs.iter().any(|input| *input.item == *item)

@@ -7,13 +7,13 @@ use std::{collections::HashMap, rc::Rc};
 use thiserror::Error;
 
 use super::{
-    find_by_product_child, find_by_product_node, find_input_node, find_output_node, GraphType,
-    NodeEdge, PathChain, Production, ScoredGraph,
+    find_by_product_node, find_input_node, find_output_node, GraphType, Node, NodeEdge,
+    ScoredGraph, ScoredNodeValue,
 };
 use crate::{
     game::{Item, ItemValuePair, Recipe},
     plan::{find_production_node, NodeValue, PlanConfig},
-    utils::{FloatType, EPSILON},
+    utils::{clamp_to_zero, FloatType, EPSILON},
 };
 
 #[derive(Error, Debug)]
@@ -26,18 +26,16 @@ pub fn solve(config: &PlanConfig) -> SolverResult<GraphType> {
     Solver::new(config).solve()
 }
 
-struct MergeNode {
+struct MergeCandidate {
     index: NodeIndex,
-    chain: PathChain,
     desired_output: ItemValuePair,
 }
 
-impl MergeNode {
+impl MergeCandidate {
     #[inline]
-    fn new(index: NodeIndex, chain: PathChain, desired_output: ItemValuePair) -> Self {
+    fn new(index: NodeIndex, desired_output: ItemValuePair) -> Self {
         Self {
             index,
-            chain,
             desired_output,
         }
     }
@@ -71,46 +69,197 @@ impl<'a> Solver<'a> {
 
     fn solve(&mut self) -> SolverResult<GraphType> {
         let mut graph: GraphType = GraphType::new();
-
-        let outputs: Vec<MergeNode> = self
-            .scored_graph
-            .output_nodes
-            .iter()
-            .map(|output| MergeNode::new(output.index, PathChain::default(), output.output.clone()))
-            .collect();
-
-        for node in outputs {
-            self.merge_optimal_path(node, &mut graph)?;
+        for node in self.scored_graph.output_nodes.clone() {
+            let merge_candidate = MergeCandidate::new(node.index, node.value.clone());
+            self.copy_optimal_path(merge_candidate, &mut graph)?;
         }
         self.cleanup_by_product_nodes(&mut graph);
 
         Ok(graph)
     }
 
-    fn merge_optimal_path(
+    fn copy_optimal_path(
         &mut self,
-        node: MergeNode,
+        node: MergeCandidate,
         graph: &mut GraphType,
     ) -> SolverResult<(NodeIndex, ItemValuePair)> {
         match &self.scored_graph.graph[node.index] {
-            NodeValue::Input(input) => {
-                assert!(*node.desired_output.item == *input.item);
-                self.merge_input_node(node, graph)
+            ScoredNodeValue::Input(item) => {
+                assert!(node.desired_output.item == *item);
+                self.copy_input(node, graph)
             }
-            NodeValue::Output(output) => {
-                assert!(*node.desired_output.item == *output.item);
-                self.merge_output_node(node, graph)
+            ScoredNodeValue::Output(item) => {
+                assert!(node.desired_output.item == *item);
+                self.copy_output(node, graph)
             }
-            NodeValue::Production(production) => {
-                self.merge_production_node(node, production.clone(), graph)
+            ScoredNodeValue::Production(recipe) => {
+                self.copy_production(node, Rc::clone(recipe), graph)
             }
-            NodeValue::ByProduct(..) => self.merge_by_product_node(node, graph),
+            ScoredNodeValue::ByProduct(bp) => {
+                assert!(node.desired_output.item == bp.item);
+                self.copy_by_product(node, graph)
+            }
         }
     }
 
-    fn merge_input_node(
+    fn copy_output(
         &mut self,
-        node: MergeNode,
+        candidate: MergeCandidate,
+        graph: &mut GraphType,
+    ) -> SolverResult<(NodeIndex, ItemValuePair)> {
+        let child_idx = self.scored_graph.output_child(candidate.index).unwrap();
+        let child_candidate = MergeCandidate::new(child_idx, candidate.desired_output.clone());
+        let (new_child_idx, leftover_output) = self.copy_optimal_path(child_candidate, graph)?;
+        if leftover_output.value > EPSILON {
+            return Err(SolverError(leftover_output.item.name.clone()));
+        }
+
+        let idx = Self::merge_output_node(candidate.desired_output.clone(), graph);
+        Self::merge_edge(
+            new_child_idx,
+            idx,
+            NodeEdge::new(candidate.desired_output, 0),
+            graph,
+        );
+
+        Ok((idx, leftover_output))
+    }
+
+    fn copy_by_product(
+        &mut self,
+        node: MergeCandidate,
+        graph: &mut GraphType,
+    ) -> SolverResult<(NodeIndex, ItemValuePair)> {
+        let mut remaining_output =
+            Self::calc_by_product_required_output(&node.desired_output, graph);
+        if remaining_output.is_zero() {
+            return Ok((
+                find_by_product_node(graph, &node.desired_output.item).unwrap(),
+                remaining_output,
+            ));
+        }
+
+        let mut new_children = Vec::new();
+        for child in self.scored_graph.by_product_children(node.index) {
+            if remaining_output.is_zero() {
+                break;
+            }
+
+            let child_candidate = MergeCandidate::new(child.1, remaining_output.clone());
+            if let Ok((new_idx, leftover)) = self.copy_optimal_path(child_candidate, graph) {
+                let used_output = remaining_output - leftover.value;
+                new_children.push((new_idx, used_output));
+                remaining_output = leftover;
+            }
+        }
+
+        let actual_output = &node.desired_output - &remaining_output;
+        if actual_output.is_zero() {
+            return Err(SolverError(node.desired_output.item.name.clone()));
+        }
+
+        let idx = Self::merge_by_product_node(actual_output, graph);
+        for (order, child) in new_children.iter().enumerate() {
+            Self::merge_edge(
+                child.0,
+                idx,
+                NodeEdge::new(child.1.clone(), order as u32),
+                graph,
+            );
+        }
+
+        Ok((idx, remaining_output))
+    }
+
+    fn copy_production(
+        &mut self,
+        candidate: MergeCandidate,
+        recipe: Rc<Recipe>,
+        graph: &mut GraphType,
+    ) -> SolverResult<(NodeIndex, ItemValuePair)> {
+        let recipe_output = recipe
+            .find_output_by_item(&candidate.desired_output.item)
+            .unwrap();
+        let desired_building_count = candidate.desired_output.ratio(recipe_output);
+
+        let mut actual_building_count = desired_building_count;
+        let mut new_children: Vec<(NodeIndex, ItemValuePair, FloatType)> = Vec::new();
+        for (edge, node) in self.scored_graph.production_children(candidate.index) {
+            let item = &self.scored_graph[edge].item;
+            let recipe_input = recipe.find_input_by_item(item).unwrap();
+            let desired_output = recipe_input.mul(actual_building_count);
+
+            let child_candidate = MergeCandidate::new(node, desired_output.clone());
+            match self.copy_optimal_path(child_candidate, graph) {
+                Ok((child_index, leftover_output)) => {
+                    let used_output = desired_output - leftover_output;
+                    let building_count = used_output.ratio(recipe_input);
+                    actual_building_count = actual_building_count.min(building_count);
+                    new_children.push((child_index, used_output, building_count));
+                }
+                Err(..) => {
+                    actual_building_count = 0.0;
+                }
+            }
+
+            // floating points errors might give us very small positive or negative numbers,
+            // so just clamp those to 0
+            actual_building_count = clamp_to_zero(actual_building_count);
+            if actual_building_count == 0.0 {
+                break;
+            }
+        }
+
+        let result = if actual_building_count > 0.0 {
+            let node_idx =
+                Self::merge_production_node(Rc::clone(&recipe), actual_building_count, graph);
+
+            Self::merge_by_products_for_other_outputs(
+                node_idx,
+                recipe
+                    .outputs
+                    .iter()
+                    .filter(|o| o.item != candidate.desired_output.item),
+                actual_building_count,
+                graph,
+            );
+
+            for (order, child) in new_children.iter().enumerate() {
+                let output_value = child.1.mul(actual_building_count / child.2);
+
+                Self::merge_edge(
+                    child.0,
+                    node_idx,
+                    NodeEdge::new(output_value, order as u32),
+                    graph,
+                );
+            }
+
+            Ok((
+                node_idx,
+                candidate
+                    .desired_output
+                    .mul(1.0 - actual_building_count / desired_building_count),
+            ))
+        } else {
+            Err(SolverError(candidate.desired_output.item.name.clone()))
+        };
+
+        // before returning, we need to propagate any difference between our initial calculated
+        // building count and the actual building count based on what is possible from our inputs
+        if actual_building_count <= desired_building_count {
+            for child in new_children {
+                let reduced_value = child.1.mul(1.0 - actual_building_count / child.2);
+                self.propagate_reduction(child.0, reduced_value, graph);
+            }
+        }
+
+        result
+    }
+
+    fn copy_input(
+        &mut self,
+        node: MergeCandidate,
         graph: &mut GraphType,
     ) -> SolverResult<(NodeIndex, ItemValuePair)> {
         let available_input = FloatType::min(
@@ -126,174 +275,35 @@ impl<'a> Solver<'a> {
                 *graph[existing_index].as_input_mut() += available_input;
                 existing_index
             }
-            None => graph.add_node(NodeValue::Input(ItemValuePair::new(
-                Rc::clone(&node.desired_output.item),
-                available_input,
-            ))),
+            None => graph.add_node(NodeValue::Input(
+                node.desired_output.with_value(available_input),
+            )),
         };
 
         self.update_limit(Rc::clone(&node.desired_output.item), -available_input);
         Ok((node_index, node.desired_output - available_input))
     }
 
-    fn merge_output_node(
-        &mut self,
-        node: MergeNode,
+    fn calc_by_product_required_output(
+        desired_output: &ItemValuePair,
         graph: &mut GraphType,
-    ) -> SolverResult<(NodeIndex, ItemValuePair)> {
-        let mut remaining_output = node.desired_output.clone();
-        let mut new_children: Vec<(NodeIndex, ItemValuePair)> = Vec::new();
-        for edge_index in self.scored_graph.output_edges(node.index, &node.chain) {
-            if remaining_output.value <= 0.0 {
-                break;
-            }
-
-            let child_index = self.scored_graph.source_node(edge_index).unwrap();
-            let child_node = MergeNode::new(
-                child_index,
-                self.scored_graph[edge_index].chain.clone(),
-                remaining_output.clone(),
-            );
-            if let Ok((child_index, leftover_output)) = self.merge_optimal_path(child_node, graph) {
-                new_children.push((child_index, remaining_output - leftover_output.value));
-                remaining_output = leftover_output;
-            }
-        }
-
-        if remaining_output.value > EPSILON {
-            return Err(SolverError(remaining_output.item.name.clone()));
-        }
-
-        let node_index = Self::create_or_update_output_node(node.desired_output, graph);
-        for (order, (child_index, item_value)) in new_children.iter().cloned().enumerate() {
-            Self::create_or_update_edge(
-                child_index,
-                node_index,
-                NodeEdge::new(item_value, order as u32),
-                graph,
-            );
-        }
-
-        Ok((node_index, remaining_output))
-    }
-
-    fn merge_production_node(
-        &mut self,
-        node: MergeNode,
-        production: Production,
-        graph: &mut GraphType,
-    ) -> SolverResult<(NodeIndex, ItemValuePair)> {
-        let recipe_output = production
-            .recipe
-            .find_output_by_item(&node.desired_output.item)
-            .unwrap();
-        let machine_count = node.desired_output.ratio(recipe_output);
-
-        let mut min_machine_count = machine_count;
-        let mut new_children_by_inputs: Vec<Vec<(NodeIndex, ItemValuePair)>> = Vec::new();
-        for (item, children) in self.scored_graph.production_edges(node.index, &node.chain) {
-            let recipe_input = production.recipe.find_input_by_item(&item).unwrap();
-            let desired_output = recipe_input.mul(machine_count);
-            let mut new_children = Vec::new();
-            let mut remaining_output = desired_output.clone();
-
-            for edge_index in children {
-                if remaining_output.value <= 0.0 {
-                    break;
+    ) -> ItemValuePair {
+        match find_by_product_node(graph, &desired_output.item) {
+            Some(node_idx) => {
+                let mut used_output = 0.0;
+                for edge in graph.edges_directed(node_idx, Outgoing) {
+                    used_output += edge.weight().value.value;
                 }
 
-                let child_index = self.scored_graph.source_node(edge_index).unwrap();
-                let child_node = MergeNode::new(
-                    child_index,
-                    self.scored_graph[edge_index].chain.clone(),
-                    remaining_output.clone(),
-                );
-                if let Ok((child_index, leftover_output)) =
-                    self.merge_optimal_path(child_node, graph)
-                {
-                    new_children.push((child_index, remaining_output - leftover_output.value));
-                    remaining_output = leftover_output;
+                let remaining_output = graph[node_idx].as_by_product().clone() - used_output;
+                if remaining_output > *desired_output {
+                    desired_output.with_value(0.0)
+                } else {
+                    desired_output - remaining_output
                 }
             }
-
-            new_children_by_inputs.push(new_children);
-            min_machine_count = FloatType::min(
-                min_machine_count,
-                (desired_output - remaining_output).ratio(recipe_input),
-            );
+            None => desired_output.clone(),
         }
-
-        let node_index = Self::create_or_update_production_node(
-            Rc::clone(&production.recipe),
-            machine_count,
-            graph,
-        );
-        for children in new_children_by_inputs {
-            for (order, (child_index, item_value)) in children.iter().cloned().enumerate() {
-                Self::create_or_update_edge(
-                    child_index,
-                    node_index,
-                    NodeEdge::new(item_value, order as u32),
-                    graph,
-                );
-            }
-        }
-
-        let reduced_output = recipe_output.mul(machine_count - min_machine_count);
-        self.propagate_reduction(node_index, reduced_output, graph);
-
-        Ok((
-            node_index,
-            node.desired_output - recipe_output.mul(min_machine_count),
-        ))
-    }
-
-    fn merge_by_product_node(
-        &mut self,
-        node: MergeNode,
-        graph: &mut GraphType,
-    ) -> SolverResult<(NodeIndex, ItemValuePair)> {
-        let (_, prod_node_index) = find_by_product_child(node.index, &self.scored_graph.graph);
-        let recipe = Rc::clone(&self.scored_graph[prod_node_index].as_production().recipe);
-        let recipe_output = recipe
-            .find_output_by_item(&node.desired_output.item)
-            .unwrap();
-
-        let desired_output = if let Some(index) = find_production_node(graph, &recipe) {
-            let machine_count = graph[index].as_production().machine_count;
-            let current_output = recipe_output.mul(machine_count);
-            if current_output >= node.desired_output {
-                ItemValuePair::new(Rc::clone(&node.desired_output.item), 0.0)
-            } else {
-                node.desired_output - current_output
-            }
-        } else {
-            node.desired_output
-        };
-
-        let production_node = MergeNode::new(prod_node_index, node.chain, desired_output.clone());
-        let (new_prod_index, leftover_output) = self.merge_optimal_path(production_node, graph)?;
-        let machine_count = graph[new_prod_index].as_production().machine_count;
-
-        let mut by_product_index = None;
-        for output in &recipe.outputs {
-            let output_value = output.mul(machine_count);
-
-            let node_index = match find_by_product_node(graph, &output.item) {
-                Some(existing_index) => {
-                    *graph[existing_index].as_by_product_mut() = output_value.clone();
-                    existing_index
-                }
-                None => graph.add_node(NodeValue::new_by_product(output_value.clone())),
-            };
-
-            graph.update_edge(new_prod_index, node_index, NodeEdge::new(output_value, 0));
-            if output.item == desired_output.item {
-                by_product_index = Some(node_index);
-            }
-        }
-
-        Ok((by_product_index.unwrap(), leftover_output))
     }
 
     fn propagate_reduction(
@@ -341,7 +351,7 @@ impl<'a> Solver<'a> {
 
     fn propagate_reduction_production_node(
         &mut self,
-        node_index: NodeIndex,
+        idx: NodeIndex,
         amount: ItemValuePair,
         graph: &mut GraphType,
     ) -> bool {
@@ -349,46 +359,51 @@ impl<'a> Solver<'a> {
             return false;
         }
 
-        let production = graph[node_index].as_production().clone();
+        let production = graph[idx].as_production().clone();
         let recipe_output = production.recipe.find_output_by_item(&amount.item).unwrap();
-        let new_machine_count =
+        let new_building_count =
             FloatType::max(0.0, production.machine_count - amount.ratio(recipe_output));
-        graph[node_index].as_production_mut().machine_count = new_machine_count;
+        graph[idx].as_production_mut().machine_count = new_building_count;
 
-        let mut children_by_items: HashMap<Rc<Item>, Vec<(EdgeIndex, NodeIndex)>> = HashMap::new();
-        for edge in graph.edges_directed(node_index, Incoming) {
-            children_by_items
-                .entry(Rc::clone(&edge.weight().value.item))
-                .or_default()
-                .push((edge.id(), edge.source()));
+        let mut children: Vec<(EdgeIndex, NodeIndex)> = graph
+            .edges_directed(idx, Incoming)
+            .map(|e| (e.id(), e.source()))
+            .collect();
+        children.sort_unstable_by(|a, b| graph[a.0].order.cmp(&graph[b.0].order).reverse());
+
+        for (edge_idx, child_idx) in children {
+            let recipe_input = production
+                .recipe
+                .find_input_by_item(&graph[edge_idx].value.item)
+                .unwrap();
+            let reduce_amount =
+                graph[edge_idx].value.clone() - recipe_input.mul(new_building_count).value;
+
+            graph[edge_idx].value -= reduce_amount.value;
+            self.propagate_reduction(child_idx, reduce_amount, graph);
         }
 
-        for (item, mut children) in children_by_items {
-            children.sort_unstable_by(|a, b| graph[a.0].order.cmp(&graph[b.0].order));
-
-            let recipe_input = production.recipe.find_input_by_item(&item).unwrap();
-            let mut required_input = recipe_input.mul(new_machine_count);
-            for (edge_index, child_index) in children {
-                required_input -= &graph[edge_index].value;
-                if required_input.value < 0.0 {
-                    let reduce_amount = -required_input.clone();
-                    required_input.value = 0.0;
-
-                    graph[edge_index].value -= reduce_amount.value;
-                    self.propagate_reduction(child_index, reduce_amount, graph);
-                }
+        let mut parent_walker = graph.neighbors_directed(idx, Outgoing).detach();
+        while let Some((edge_idx, parent_idx)) = parent_walker.next(graph) {
+            let item = &graph[parent_idx].as_by_product().item;
+            if *item == amount.item {
+                continue;
             }
+
+            let recipe_output = production.recipe.find_output_by_item(item).unwrap();
+            let new_amount = recipe_output.mul(new_building_count).value;
+            graph[edge_idx].value.value = new_amount;
+            graph[parent_idx].as_by_product_mut().value = new_amount;
         }
 
-        if new_machine_count <= 0.0 {
-            graph.remove_node(node_index);
+        if new_building_count <= 0.0 {
+            graph.remove_node(idx);
             true
         } else {
             false
         }
     }
 
-    #[allow(dead_code)]
     fn propagate_reduction_by_product_node(
         &mut self,
         node_index: NodeIndex,
@@ -399,61 +414,50 @@ impl<'a> Solver<'a> {
             return false;
         }
 
-        let (_, production_idx) = find_by_product_child(node_index, graph);
-        let recipe = Rc::clone(&graph[production_idx].as_production().recipe);
-        let machine_count = graph[production_idx].as_production().machine_count;
+        *graph[node_index].as_by_product_mut() -= amount.value;
 
-        let mut by_product_nodes = Vec::new();
-        let mut required_machine_count: FloatType = 0.0;
-        for edge in graph.edges_directed(production_idx, Outgoing) {
-            let item = &graph[edge.target()].as_by_product().item;
-            let recipe_output = recipe.find_output_by_item(item).unwrap();
+        let mut children: Vec<(EdgeIndex, NodeIndex)> = graph
+            .edges_directed(node_index, Incoming)
+            .map(|e| (e.id(), e.source()))
+            .collect();
+        children.sort_unstable_by(|a, b| graph[a.0].order.cmp(&graph[b.0].order).reverse());
 
-            by_product_nodes.push((edge.id(), edge.target(), recipe_output));
-            if edge.target() == node_index {
-                continue;
+        let mut all_deleted = false;
+        let mut remaining_amount = amount;
+        for child in children {
+            if remaining_amount.is_zero() {
+                break;
             }
 
-            let used_output: FloatType = graph
-                .edges_directed(edge.target(), Outgoing)
-                .map(|e| e.weight().value())
-                .sum();
-            required_machine_count = required_machine_count.min(used_output / recipe_output.value);
+            let reduce_amount = if remaining_amount > graph[child.0].value {
+                graph[child.0].value.clone()
+            } else {
+                remaining_amount.clone()
+            };
+            remaining_amount -= reduce_amount.value;
+
+            graph[child.0].value -= reduce_amount.value;
+            all_deleted &= self.propagate_reduction(child.1, reduce_amount, graph);
         }
 
-        let recipe_output = recipe.find_output_by_item(&amount.item).unwrap();
-        let new_machine_count =
-            required_machine_count.max(machine_count - amount.ratio(recipe_output));
-        let new_amount = recipe_output.mul(machine_count - new_machine_count);
-
-        if self.propagate_reduction_production_node(production_idx, new_amount, graph) {
-            for (_, idx, _) in by_product_nodes {
-                graph.remove_node(idx);
-            }
-
-            true
-        } else {
-            for (e_idx, n_idx, recipe_output) in by_product_nodes {
-                let new_amount = recipe_output.mul(new_machine_count);
-                graph[e_idx].value = new_amount.clone();
-                *graph[n_idx].as_by_product_mut() = new_amount;
-            }
-
-            false
+        if all_deleted {
+            graph.remove_node(node_index);
         }
+
+        all_deleted
     }
 
-    fn create_or_update_output_node(input: ItemValuePair, graph: &mut GraphType) -> NodeIndex {
-        match find_output_node(graph, &input.item) {
+    fn merge_output_node(output: ItemValuePair, graph: &mut GraphType) -> NodeIndex {
+        match find_output_node(graph, &output.item) {
             Some(existing_index) => {
-                graph[existing_index].as_output_mut().value += input.value;
+                graph[existing_index].as_output_mut().value += output.value;
                 existing_index
             }
-            None => graph.add_node(NodeValue::new_output(input)),
+            None => graph.add_node(NodeValue::new_output(output)),
         }
     }
 
-    fn create_or_update_production_node(
+    fn merge_production_node(
         recipe: Rc<Recipe>,
         machine_count: FloatType,
         graph: &mut GraphType,
@@ -467,7 +471,31 @@ impl<'a> Solver<'a> {
         }
     }
 
-    fn create_or_update_edge(
+    fn merge_by_product_node(output: ItemValuePair, graph: &mut GraphType) -> NodeIndex {
+        match find_by_product_node(graph, &output.item) {
+            Some(existing_index) => {
+                *graph[existing_index].as_by_product_mut() += output.value;
+                existing_index
+            }
+            None => graph.add_node(NodeValue::new_by_product(output)),
+        }
+    }
+
+    fn merge_by_products_for_other_outputs<'b>(
+        node_idx: NodeIndex,
+        recipe_outputs: impl Iterator<Item = &'b ItemValuePair>,
+        building_count: f32,
+        graph: &mut GraphType,
+    ) {
+        for recipe_output in recipe_outputs {
+            let extra_output = recipe_output.mul(building_count);
+            let parent_idx = Self::merge_by_product_node(extra_output.clone(), graph);
+
+            Self::merge_edge(node_idx, parent_idx, NodeEdge::new(extra_output, 0), graph);
+        }
+    }
+
+    fn merge_edge(
         child_index: NodeIndex,
         parent_index: NodeIndex,
         weight: NodeEdge,
@@ -476,6 +504,7 @@ impl<'a> Solver<'a> {
         if let Some(edge_index) = graph.find_edge(child_index, parent_index) {
             assert!(graph[edge_index].item() == weight.item());
             graph[edge_index].value += weight.value();
+            graph[edge_index].order = graph[edge_index].order.max(weight.order);
         } else {
             graph.add_edge(child_index, parent_index, weight);
         }
@@ -492,32 +521,73 @@ impl<'a> Solver<'a> {
             .for_each(|i| self.cleanup_by_product(*i, graph));
     }
 
-    fn cleanup_by_product(&self, node_index: NodeIndex, graph: &mut GraphType) {
-        let (_, prod_index) = find_by_product_child(node_index, graph);
+    fn cleanup_by_product(&self, node_idx: NodeIndex, graph: &mut GraphType) {
+        let mut parents: Vec<(NodeIndex, ItemValuePair)> = graph
+            .edges_directed(node_idx, Outgoing)
+            .map(|e| (e.target(), e.weight().value.clone()))
+            .collect();
+        let mut children: Vec<(NodeIndex, ItemValuePair)> = graph
+            .edges_directed(node_idx, Incoming)
+            .map(|e| (e.source(), e.weight().value.clone()))
+            .collect();
 
-        let mut used_output: FloatType = 0.0;
-        let mut walker = graph.neighbors_directed(node_index, Outgoing).detach();
+        parents.sort_unstable_by(|a, b| a.1.cmp(&b.1));
+        children.sort_unstable_by(|a, b| a.1.cmp(&b.1).reverse());
 
-        while let Some((e, i)) = walker.next(graph) {
-            let weight = &graph[e];
-            used_output += weight.value();
+        let mut current_child = children.pop().unwrap();
+        for parent in parents {
+            let mut remaining_output = parent.1;
+            loop {
+                if current_child.1.is_zero() {
+                    Self::delete_edge_between(graph, current_child.0, node_idx);
+                    current_child = children.pop().unwrap();
+                }
 
-            // move the edge to go directly from the parent to the production node
-            graph.add_edge(prod_index, i, weight.clone());
-            graph.remove_edge(e);
+                if remaining_output > current_child.1 {
+                    graph.add_edge(
+                        current_child.0,
+                        parent.0,
+                        NodeEdge::new(current_child.1.clone(), 0),
+                    );
+                    remaining_output -= current_child.1.value;
+                    current_child.1.value = 0.0;
+                } else {
+                    graph.add_edge(
+                        current_child.0,
+                        parent.0,
+                        NodeEdge::new(remaining_output.clone(), 0),
+                    );
+                    current_child.1 -= remaining_output.value;
+                    remaining_output.value = 0.0;
+                    break;
+                }
+            }
+            Self::delete_edge_between(graph, node_idx, parent.0);
         }
 
-        *graph[node_index].as_by_product_mut() -= used_output;
-        let unused_output = graph[node_index].as_by_product();
-        if unused_output.value.abs() < EPSILON {
-            graph.remove_node(node_index);
+        let remaining_output = clamp_to_zero(
+            current_child.1.value + children.iter().map(|c| c.1.value).sum::<FloatType>(),
+        );
+        if remaining_output > 0.0 {
+            graph[node_idx].as_by_product_mut().value = remaining_output;
+
+            if !current_child.1.is_zero() {
+                let edge_index = graph.find_edge(current_child.0, node_idx).unwrap();
+                graph[edge_index].value = current_child.1
+            }
         } else {
-            graph.update_edge(
-                prod_index,
-                node_index,
-                NodeEdge::new(unused_output.clone(), 0),
-            );
+            graph.remove_node(node_idx);
         }
+    }
+
+    fn delete_edge_between(graph: &mut GraphType, a: NodeIndex, b: NodeIndex) -> bool {
+        graph
+            .find_edge(a, b)
+            .map(|e| {
+                graph.remove_edge(e);
+                true
+            })
+            .unwrap_or(false)
     }
 }
 
