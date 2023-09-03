@@ -14,12 +14,16 @@ mod utils;
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Path to the game database json.  Defaults to game-db.json
-    #[arg(short = 'd', long = "db")]
+    #[arg(short = 'd', long = "game-db")]
     game_db: Option<PathBuf>,
 
     /// Path to the plan configuration yaml
     #[arg()]
     plan: PathBuf,
+
+    /// Print out the intermediary full plan graph instead
+    #[arg(short = 'f', long = "full-plan-graph")]
+    full_plan_graph: bool,
 }
 
 fn main() {
@@ -39,13 +43,19 @@ fn main() {
         panic!("Failed to load plan {}: {}", args.plan.display(), e);
     });
 
-    let graph = solve(&plan).unwrap_or_else(|e| {
-        panic!("Failed to solve plan: {}", e);
-    });
-    print_graph(&graph);
-
-    /*let mut graph = crate::plan::ScoredGraph::new(&plan);
-    graph.build();
-
-    print_graph(&graph.graph);*/
+    if args.full_plan_graph {
+        let graph = crate::plan::build_full_plan(&plan).unwrap_or_else(|e| {
+            panic!(
+                "Failed to build full plan graph {}: {}",
+                args.plan.display(),
+                e
+            );
+        });
+        print_graph(&graph);
+    } else {
+        let graph = solve(&plan).unwrap_or_else(|e| {
+            panic!("Failed to solve plan: {}", e);
+        });
+        print_graph(&graph);
+    }
 }
