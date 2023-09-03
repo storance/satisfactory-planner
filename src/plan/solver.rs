@@ -25,18 +25,11 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
         match &full_graph[i] {
             PlanNodeWeight::Input(item) => {
                 let var = vars.add(variable().min(0.0));
-                let weight = if item.resource {
+                if item.resource {
                     let limit = config.game_db.get_resource_limit(item);
-                    if limit == 0.0 {
-                        0.0
-                    } else {
-                        1.0 / limit
-                    }
-                } else {
-                    0.0
-                };
+                    min_expr += var / limit;
+                }
 
-                min_expr += var * weight;
                 node_variables.insert(i, var);
             }
             PlanNodeWeight::ByProduct(..) => {
