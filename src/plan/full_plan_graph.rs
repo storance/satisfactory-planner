@@ -6,7 +6,7 @@ use petgraph::{
 };
 use std::{fmt, rc::Rc};
 
-use super::{PlanConfig, UNSOLVABLE_PLAN_ERROR, NodeWeight, print_graph};
+use super::{NodeWeight, PlanConfig, UNSOLVABLE_PLAN_ERROR};
 
 pub type FullPlanGraph = StableDiGraph<PlanNodeWeight, Rc<Item>>;
 
@@ -14,7 +14,7 @@ pub type FullPlanGraph = StableDiGraph<PlanNodeWeight, Rc<Item>>;
 pub enum PlanNodeWeight {
     Input(Rc<Item>),
     Output(Rc<Item>),
-    ByProduct(Rc<Item>, bool),
+    ByProduct(Rc<Item>),
     Production(Rc<Recipe>),
 }
 
@@ -31,7 +31,7 @@ impl PlanNodeWeight {
 
     #[inline]
     pub fn new_by_product(item: Rc<Item>) -> Self {
-        Self::ByProduct(item, true)
+        Self::ByProduct(item)
     }
 
     #[inline]
@@ -57,20 +57,6 @@ impl PlanNodeWeight {
     #[inline]
     pub fn is_production_for_recipe(&self, recipe: &Recipe) -> bool {
         matches!(self, Self::Production(r) if **r == *recipe)
-    }
-
-    pub fn is_partial(&self) -> bool {
-        match self {
-            Self::ByProduct(_, partial) => *partial,
-            _ => panic!("Node is not a ByProduct node"),
-        }
-    }
-
-    pub fn set_partial(&mut self, new_value: bool) {
-        match self {
-            Self::ByProduct(_, partial) => *partial = new_value,
-            _ => panic!("Node is not a ByProduct node"),
-        };
     }
 }
 
@@ -128,8 +114,6 @@ pub fn build_full_plan(config: &PlanConfig) -> Result<FullPlanGraph, anyhow::Err
         create_children(config, &mut graph, idx, Rc::clone(&o.item));
     });
 
-    print_graph(&graph);
-
     for output in &config.outputs {
         let idx = find_output_node(&graph, &output.item).unwrap();
         let mut visited = Vec::new();
@@ -167,14 +151,7 @@ pub fn create_production_by_product(
     item: Rc<Item>,
 ) {
     let idx = match find_by_product_node(graph, &item) {
-        Some(idx) => {
-            if !graph[idx].is_partial() {
-                graph.add_edge(idx, parent_idx, item);
-                return;
-            }
-
-            idx
-        }
+        Some(idx) => idx,
         None => graph.add_node(PlanNodeWeight::new_by_product(Rc::clone(&item))),
     };
 
@@ -186,7 +163,7 @@ pub fn create_production_by_product(
         create_input_node(graph, idx, Rc::clone(&item));
     }
 
-    graph.add_edge(idx, parent_idx, item);
+    graph.update_edge(idx, parent_idx, item);
 }
 
 fn create_production_node(
@@ -199,20 +176,15 @@ fn create_production_node(
     if find_production_node(graph, &recipe).is_none() {
         let idx = graph.add_node(PlanNodeWeight::new_production(Rc::clone(&recipe)));
 
-        let by_product_nodes: Vec<NodeIndex> = recipe
-            .outputs
-            .iter()
-            .filter(|o| o.item != item)
-            .map(|o| create_partial_by_product_node(graph, idx, Rc::clone(&o.item)))
-            .collect();
+        for output in &recipe.outputs {
+            if output.item != item {
+                create_partial_by_product_node(graph, idx, Rc::clone(&output.item));
+            }
+        }
 
         for input in &recipe.inputs {
             create_children(config, graph, idx, Rc::clone(&input.item));
         }
-
-        by_product_nodes
-            .iter()
-            .for_each(|i| graph[*i].set_partial(false));
         graph.add_edge(idx, parent_idx, item);
     }
 }
@@ -229,7 +201,12 @@ fn create_partial_by_product_node(
     idx
 }
 
-fn prune_impossible(config: &PlanConfig, graph: &mut FullPlanGraph, idx: NodeIndex, visited: &mut Vec<NodeIndex>) -> bool {
+fn prune_impossible(
+    config: &PlanConfig,
+    graph: &mut FullPlanGraph,
+    idx: NodeIndex,
+    visited: &mut Vec<NodeIndex>,
+) -> bool {
     if visited.contains(&idx) {
         return false;
     }
@@ -266,7 +243,7 @@ fn prune_impossible(config: &PlanConfig, graph: &mut FullPlanGraph, idx: NodeInd
             }
         }
         PlanNodeWeight::Input(item) => {
-            if config.find_input(&item) == 0.0 {
+            if config.find_input(item) == 0.0 {
                 graph.remove_node(idx);
                 true
             } else {
@@ -290,18 +267,15 @@ fn prune_impossible(config: &PlanConfig, graph: &mut FullPlanGraph, idx: NodeInd
 }
 
 fn prune(graph: &mut FullPlanGraph, idx: NodeIndex) {
-    match &graph[idx] {
-        PlanNodeWeight::Production(..) => {
-            let mut parent_walker = graph.neighbors_directed(idx, Outgoing).detach();
-            while let Some(parent_idx) = parent_walker.next_node(graph) {
-                // if our parent only has a single child, then that is us and it should be deleted
-                if graph.neighbors_undirected(parent_idx).count() == 1 {
-                    graph.remove_node(parent_idx);
-                }
+    if let PlanNodeWeight::Production(..) = graph[idx] {
+        let mut parent_walker = graph.neighbors_directed(idx, Outgoing).detach();
+        while let Some(parent_idx) = parent_walker.next_node(graph) {
+            // if our parent only has a single child, then that is us and it should be deleted
+            if graph.neighbors_undirected(parent_idx).count() == 1 {
+                graph.remove_node(parent_idx);
             }
         }
-        _ => {}
-    };
+    }
 
     let mut child_walker = graph.neighbors_directed(idx, Incoming).detach();
     while let Some(child_idx) = child_walker.next_node(graph) {

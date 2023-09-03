@@ -1,14 +1,15 @@
-use std::collections::HashMap;
 use good_lp::{minilp, variable, variables, Expression, SolverModel, Variable};
 use petgraph::{
     stable_graph::{EdgeIndex, NodeIndex},
     visit::EdgeRef,
     Direction::{Incoming, Outgoing},
 };
+use std::collections::HashMap;
 
 use super::{
     full_plan_graph::{build_full_plan, PlanNodeWeight},
-    solved_graph::{copy_solution, SolvedGraph}, PlanConfig,
+    solved_graph::{copy_solution, SolvedGraph},
+    PlanConfig,
 };
 
 pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
@@ -103,14 +104,14 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
             PlanNodeWeight::Production(recipe) => {
                 for edge in full_graph.edges_directed(i, Outgoing) {
                     let edge_var = edge_variables.get(&edge.id()).unwrap();
-                    let recipe_output = recipe.find_output_by_item(&edge.weight()).unwrap();
+                    let recipe_output = recipe.find_output_by_item(edge.weight()).unwrap();
 
                     problem = problem.with((var * recipe_output.value).eq(edge_var));
                 }
 
                 for edge in full_graph.edges_directed(i, Incoming) {
                     let edge_var = edge_variables.get(&edge.id()).unwrap();
-                    let recipe_input = recipe.find_input_by_item(&edge.weight()).unwrap();
+                    let recipe_input = recipe.find_input_by_item(edge.weight()).unwrap();
 
                     problem = problem.with((var * recipe_input.value).eq(edge_var));
                 }
@@ -129,15 +130,19 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
 
 #[cfg(test)]
 mod tests {
-    use std::rc::Rc;
     use petgraph::visit::IntoEdgeReferences;
+    use std::rc::Rc;
 
-    use crate::{game::{test::get_test_game_db_with_recipes, ItemValuePair}, plan::{solved_graph::SolvedNodeWeight, print_graph}, utils::{FloatType, EPSILON}};
+    use crate::{
+        game::{test::get_test_game_db_with_recipes, ItemValuePair},
+        plan::solved_graph::SolvedNodeWeight,
+        utils::{FloatType, EPSILON},
+    };
 
     use super::*;
 
     #[test]
-    fn test_single_production_node() {
+    fn test_iron_ingot_base_recipes() {
         let game_db = get_test_game_db_with_recipes(&["Recipe_IngotIron_C"]);
 
         let iron_ore = game_db.find_item("Desc_OreIron_C").unwrap();
@@ -151,18 +156,14 @@ mod tests {
         );
 
         let mut expected_graph = SolvedGraph::new();
-        let output_idx = expected_graph.add_node(SolvedNodeWeight::new_output(
-            Rc::clone(&iron_ingot),
-            30.0,
-        ));
+        let output_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_output(Rc::clone(&iron_ingot), 30.0));
         let smelter_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
             Rc::clone(&iron_ingot_recipe),
             1.0,
         ));
-        let input_idx = expected_graph.add_node(SolvedNodeWeight::new_input(
-            Rc::clone(&iron_ore),
-            30.0,
-        ));
+        let input_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&iron_ore), 30.0));
 
         expected_graph.add_edge(
             smelter_idx,
@@ -181,7 +182,7 @@ mod tests {
     }
 
     #[test]
-    fn test_single_production_node_optimizes_resources() {
+    fn test_iron_ingot_with_pure_ingot_recipe() {
         let game_db = get_test_game_db_with_recipes(&[
             "Recipe_IngotIron_C",
             "Recipe_Alternate_PureIronIngot_C",
@@ -201,23 +202,17 @@ mod tests {
         );
 
         let mut expected_graph = SolvedGraph::new();
-        let output_idx = expected_graph.add_node(SolvedNodeWeight::new_output(
-            Rc::clone(&iron_ingot),
-            65.0,
-        ));
+        let output_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_output(Rc::clone(&iron_ingot), 65.0));
         let refinery_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
             Rc::clone(&iron_ingot_recipe),
             1.0,
         ));
-        let ore_input_idx = expected_graph.add_node(SolvedNodeWeight::new_input(
-            Rc::clone(&iron_ore),
-            35.0,
-        ));
+        let ore_input_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&iron_ore), 35.0));
 
-        let water_input_idx = expected_graph.add_node(SolvedNodeWeight::new_input(
-            Rc::clone(&water),
-            20.0,
-        ));
+        let water_input_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&water), 20.0));
 
         expected_graph.add_edge(
             refinery_idx,
@@ -241,7 +236,7 @@ mod tests {
     }
 
     #[test]
-    fn test_multiple_outputs() {
+    fn test_iron_rods_and_plates() {
         let game_db = get_test_game_db_with_recipes(&[
             "Recipe_IngotIron_C",
             "Recipe_IronPlate_C",
@@ -266,29 +261,25 @@ mod tests {
         );
 
         let mut expected_graph = SolvedGraph::new();
-        let plate_output_idx = expected_graph.add_node(SolvedNodeWeight::new_output(
-            Rc::clone(&iron_plate),
-            60.0,
-        ));
-        let rod_output_idx = expected_graph.add_node(SolvedNodeWeight::new_output(
-            Rc::clone(&iron_rod),
-            30.0,
-        ));
+        let plate_output_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_output(Rc::clone(&iron_plate), 60.0));
+        let rod_output_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_output(Rc::clone(&iron_rod), 30.0));
 
         let plate_prod_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
             Rc::clone(&iron_plate_recipe),
             3.0,
         ));
-        let rod_prod_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_production(Rc::clone(&iron_rod_recipe), 2.0));
+        let rod_prod_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
+            Rc::clone(&iron_rod_recipe),
+            2.0,
+        ));
         let smelter_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
             Rc::clone(&iron_ingot_recipe),
             4.0,
         ));
-        let input_idx = expected_graph.add_node(SolvedNodeWeight::new_input(
-            Rc::clone(&iron_ore),
-            120.0,
-        ));
+        let input_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&iron_ore), 120.0));
 
         expected_graph.add_edge(
             plate_prod_idx,
@@ -325,7 +316,7 @@ mod tests {
     }
 
     #[test]
-    fn test_input_limits() {
+    fn test_wire_with_input_limits() {
         let game_db = get_test_game_db_with_recipes(&[
             "Recipe_IngotIron_C",
             "Recipe_IngotCopper_C",
@@ -365,10 +356,8 @@ mod tests {
         );
 
         let mut expected_graph = SolvedGraph::new();
-        let output_idx = expected_graph.add_node(SolvedNodeWeight::new_output(
-            Rc::clone(&wire),
-            232.5,
-        ));
+        let output_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_output(Rc::clone(&wire), 232.5));
 
         let cat_wire_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
             Rc::clone(&caterium_wire_recipe),
@@ -380,8 +369,10 @@ mod tests {
             1.0,
         ));
 
-        let iron_wire_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_production(Rc::clone(&iron_wire_recipe), 1.0));
+        let iron_wire_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
+            Rc::clone(&iron_wire_recipe),
+            1.0,
+        ));
 
         let iron_ingot_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
             Rc::clone(&iron_ingot_recipe),
@@ -398,20 +389,14 @@ mod tests {
             1.2,
         ));
 
-        let iron_ore_idx = expected_graph.add_node(SolvedNodeWeight::new_input(
-            Rc::clone(&iron_ore),
-            12.5,
-        ));
+        let iron_ore_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&iron_ore), 12.5));
 
-        let copper_ore_idx = expected_graph.add_node(SolvedNodeWeight::new_input(
-            Rc::clone(&copper_ore),
-            12.0,
-        ));
+        let copper_ore_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&copper_ore), 12.0));
 
-        let cat_ore_idx = expected_graph.add_node(SolvedNodeWeight::new_input(
-            Rc::clone(&caterium_ore),
-            54.0,
-        ));
+        let cat_ore_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&caterium_ore), 54.0));
 
         expected_graph.add_edge(
             cat_wire_idx,
@@ -480,7 +465,7 @@ mod tests {
     }
 
     #[test]
-    fn test_multiple_output_recipes() {
+    fn test_fuel_and_plastic() {
         let game_db = get_test_game_db_with_recipes(&[
             "Recipe_Alternate_HeavyOilResidue_C",
             "Recipe_ResidualFuel_C",
@@ -509,20 +494,20 @@ mod tests {
         );
 
         let mut expected_graph = SolvedGraph::new();
-        let fuel_output_idx = expected_graph.add_node(SolvedNodeWeight::new_output(
-            Rc::clone(&fuel),
-            180.0,
-        ));
-        let plastic_output_idx = expected_graph.add_node(SolvedNodeWeight::new_output(
-            Rc::clone(&plastic), 30.0,
-        ));
+        let fuel_output_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_output(Rc::clone(&fuel), 180.0));
+        let plastic_output_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_output(Rc::clone(&plastic), 30.0));
 
         let resin_by_prod_idx = expected_graph.add_node(SolvedNodeWeight::new_by_product(
-            Rc::clone(&polymer_resin), 45.0,
+            Rc::clone(&polymer_resin),
+            45.0,
         ));
 
-        let hor_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_production(Rc::clone(&hor_recipe), 6.75));
+        let hor_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
+            Rc::clone(&hor_recipe),
+            6.75,
+        ));
 
         let plastic_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
             Rc::clone(&residual_plastic_recipe),
@@ -534,15 +519,11 @@ mod tests {
             4.5,
         ));
 
-        let oil_input_idx = expected_graph.add_node(SolvedNodeWeight::new_input(
-            Rc::clone(&oil),
-            202.5,
-        ));
+        let oil_input_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&oil), 202.5));
 
-        let water_idx = expected_graph.add_node(SolvedNodeWeight::new_input(
-            Rc::clone(&water),
-            30.0,
-        ));
+        let water_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&water), 30.0));
 
         expected_graph.add_edge(
             fuel_idx,
@@ -589,14 +570,185 @@ mod tests {
         let result = solve(&config).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);
         });
+        assert_graphs_equal(result, expected_graph);
+    }
 
-        //assert!(result.is_ok(), "{:?}", result);
+    #[test]
+    pub fn test_diluted_packaged_fuel() {
+        let game_db = get_test_game_db_with_recipes(&[
+            "Recipe_Alternate_HeavyOilResidue_C",
+            "Recipe_ResidualFuel_C",
+            "Recipe_Plastic_C",
+            "Recipe_ResidualPlastic_C",
+            "Recipe_PackagedWater_C",
+            "Recipe_UnpackageFuel_C",
+            "Recipe_FluidCanister_C",
+            "Recipe_Alternate_DilutedPackagedFuel_C",
+        ]);
+
+        let oil = game_db.find_item("Desc_LiquidOil_C").unwrap();
+        let fuel = game_db.find_item("Desc_LiquidFuel_C").unwrap();
+        let water = game_db.find_item("Desc_Water_C").unwrap();
+        let heavy_oil_residue = game_db.find_item("Desc_HeavyOilResidue_C").unwrap();
+        let plastic = game_db.find_item("Desc_Plastic_C").unwrap();
+        let polymer_resin = game_db.find_item("Desc_PolymerResin_C").unwrap();
+        let empty_canister = game_db.find_item("Desc_FluidCanister_C").unwrap();
+        let packaged_water = game_db.find_item("Desc_PackagedWater_C").unwrap();
+        let packaged_fuel = game_db.find_item("Desc_Fuel_C").unwrap();
+
+        let hor_recipe = game_db
+            .find_recipe("Recipe_Alternate_HeavyOilResidue_C")
+            .unwrap();
+        let empty_canister_recipe = game_db.find_recipe("Recipe_FluidCanister_C").unwrap();
+        let residual_plastic_recipe = game_db.find_recipe("Recipe_ResidualPlastic_C").unwrap();
+        let unpackage_fuel_recipe = game_db.find_recipe("Recipe_UnpackageFuel_C").unwrap();
+        let packaged_water_recipe = game_db.find_recipe("Recipe_PackagedWater_C").unwrap();
+        let diluted_fuel_recipe = game_db
+            .find_recipe("Recipe_Alternate_DilutedPackagedFuel_C")
+            .unwrap();
+
+        let config = PlanConfig::new(
+            vec![
+                ItemValuePair::new(Rc::clone(&fuel), 120.0),
+                ItemValuePair::new(Rc::clone(&packaged_fuel), 20.0),
+            ],
+            game_db,
+        );
+
+        let mut expected_graph = SolvedGraph::new();
+        let fuel_output_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_output(Rc::clone(&fuel), 120.0));
+        let packaged_fuel_output_idx = expected_graph.add_node(SolvedNodeWeight::new_output(
+            Rc::clone(&packaged_fuel),
+            20.0,
+        ));
+
+        let resin_by_prod_idx = expected_graph.add_node(SolvedNodeWeight::new_by_product(
+            Rc::clone(&polymer_resin),
+            5.0,
+        ));
+
+        let hor_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
+            Rc::clone(&hor_recipe),
+            1.75,
+        ));
+
+        let plastic_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
+            Rc::clone(&residual_plastic_recipe),
+            0.5,
+        ));
+
+        let empty_canister_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
+            Rc::clone(&empty_canister_recipe),
+            1.0 / 3.0,
+        ));
+
+        let packaged_water_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
+            Rc::clone(&packaged_water_recipe),
+            7.0 / 3.0,
+        ));
+
+        let diluted_fuel_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
+            Rc::clone(&diluted_fuel_recipe),
+            7.0 / 3.0,
+        ));
+
+        let unpackage_fuel_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
+            Rc::clone(&unpackage_fuel_recipe),
+            2.0,
+        ));
+
+        let oil_input_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&oil), 52.5));
+
+        let water_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&water), 150.0));
+
+        expected_graph.add_edge(
+            unpackage_fuel_idx,
+            fuel_output_idx,
+            ItemValuePair::new(Rc::clone(&fuel), 120.0),
+        );
+
+        expected_graph.add_edge(
+            diluted_fuel_idx,
+            packaged_fuel_output_idx,
+            ItemValuePair::new(Rc::clone(&packaged_fuel), 20.0),
+        );
+
+        expected_graph.add_edge(
+            diluted_fuel_idx,
+            unpackage_fuel_idx,
+            ItemValuePair::new(Rc::clone(&packaged_fuel), 120.0),
+        );
+
+        expected_graph.add_edge(
+            unpackage_fuel_idx,
+            packaged_water_idx,
+            ItemValuePair::new(Rc::clone(&empty_canister), 120.0),
+        );
+
+        expected_graph.add_edge(
+            packaged_water_idx,
+            diluted_fuel_idx,
+            ItemValuePair::new(Rc::clone(&packaged_water), 140.0),
+        );
+
+        expected_graph.add_edge(
+            hor_idx,
+            diluted_fuel_idx,
+            ItemValuePair::new(Rc::clone(&heavy_oil_residue), 70.0),
+        );
+
+        expected_graph.add_edge(
+            empty_canister_idx,
+            packaged_water_idx,
+            ItemValuePair::new(Rc::clone(&empty_canister), 20.0),
+        );
+
+        expected_graph.add_edge(
+            water_idx,
+            packaged_water_idx,
+            ItemValuePair::new(Rc::clone(&water), 140.0),
+        );
+
+        expected_graph.add_edge(
+            plastic_idx,
+            empty_canister_idx,
+            ItemValuePair::new(Rc::clone(&plastic), 10.0),
+        );
+
+        expected_graph.add_edge(
+            hor_idx,
+            plastic_idx,
+            ItemValuePair::new(Rc::clone(&polymer_resin), 30.0),
+        );
+
+        expected_graph.add_edge(
+            water_idx,
+            plastic_idx,
+            ItemValuePair::new(Rc::clone(&water), 10.0),
+        );
+
+        expected_graph.add_edge(
+            hor_idx,
+            resin_by_prod_idx,
+            ItemValuePair::new(Rc::clone(&polymer_resin), 5.0),
+        );
+
+        expected_graph.add_edge(
+            oil_input_idx,
+            hor_idx,
+            ItemValuePair::new(Rc::clone(&oil), 52.5),
+        );
+
+        let result = solve(&config).unwrap_or_else(|e| {
+            panic!("Failed to solve plan: {}", e);
+        });
         assert_graphs_equal(result, expected_graph);
     }
 
     fn assert_graphs_equal(actual: SolvedGraph, expected: SolvedGraph) {
-        print_graph(&actual);
-
         let mut node_mapping: HashMap<NodeIndex, NodeIndex> = HashMap::new();
 
         for i in expected.node_indices() {
@@ -643,12 +795,19 @@ mod tests {
 
     fn node_equals(a_node: &SolvedNodeWeight, b_node: &SolvedNodeWeight) -> bool {
         match (a_node, b_node) {
-            (SolvedNodeWeight::Input(a), SolvedNodeWeight::Input(b)) => item_value_pair_equals(a, b),
-            (SolvedNodeWeight::Output(a), SolvedNodeWeight::Output(b)) => item_value_pair_equals(a, b),
-            (SolvedNodeWeight::ByProduct(a), SolvedNodeWeight::ByProduct(b)) => item_value_pair_equals(a, b),
-            (SolvedNodeWeight::Production(a_recipe, a_building_count), SolvedNodeWeight::Production(b_recipe, b_building_count)) => {
-                a_recipe == b_recipe && float_equals(*a_building_count, *b_building_count)
+            (SolvedNodeWeight::Input(a), SolvedNodeWeight::Input(b)) => {
+                item_value_pair_equals(a, b)
             }
+            (SolvedNodeWeight::Output(a), SolvedNodeWeight::Output(b)) => {
+                item_value_pair_equals(a, b)
+            }
+            (SolvedNodeWeight::ByProduct(a), SolvedNodeWeight::ByProduct(b)) => {
+                item_value_pair_equals(a, b)
+            }
+            (
+                SolvedNodeWeight::Production(a_recipe, a_building_count),
+                SolvedNodeWeight::Production(b_recipe, b_building_count),
+            ) => a_recipe == b_recipe && float_equals(*a_building_count, *b_building_count),
             _ => false,
         }
     }
@@ -665,11 +824,12 @@ mod tests {
         match node {
             SolvedNodeWeight::Input(input) => format!("Input({}:{})", input.item, input.value),
             SolvedNodeWeight::Output(output) => format!("Output({}:{})", output.item, output.value),
-            SolvedNodeWeight::ByProduct(output) => format!("ByProduct({}:{})", output.item, output.value),
-            SolvedNodeWeight::Production(recipe, building_count) => format!(
-                "Production({}, {})",
-                recipe.name, building_count
-            ),
+            SolvedNodeWeight::ByProduct(output) => {
+                format!("ByProduct({}:{})", output.item, output.value)
+            }
+            SolvedNodeWeight::Production(recipe, building_count) => {
+                format!("Production({}, {})", recipe.name, building_count)
+            }
         }
     }
 

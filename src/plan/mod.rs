@@ -1,6 +1,6 @@
-use std::fmt;
-use petgraph::stable_graph::StableDiGraph;
 use petgraph::dot::Dot;
+use petgraph::stable_graph::StableDiGraph;
+use std::fmt;
 
 mod config;
 mod full_plan_graph;
@@ -14,9 +14,10 @@ pub use solver::*;
 
 pub const UNSOLVABLE_PLAN_ERROR: &str = "Unable to solve the given factory plan.";
 
-pub trait NodeWeight 
-    where Self: fmt::Display {
-
+pub trait NodeWeight
+where
+    Self: fmt::Display,
+{
     fn is_input(&self) -> bool;
     fn is_input_resource(&self) -> bool;
     fn is_output(&self) -> bool;

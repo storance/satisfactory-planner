@@ -1,4 +1,7 @@
-use super::{full_plan_graph::{FullPlanGraph, PlanNodeWeight}, NodeWeight};
+use super::{
+    full_plan_graph::{FullPlanGraph, PlanNodeWeight},
+    NodeWeight,
+};
 use crate::{
     game::{Item, ItemValuePair, Recipe},
     utils::{clamp_to_zero, is_zero, round, FloatType},
@@ -125,7 +128,7 @@ pub fn copy_solution<S: Solution>(
             PlanNodeWeight::Output(item) => {
                 solved_graph.add_node(SolvedNodeWeight::new_output(Rc::clone(item), solution))
             }
-            PlanNodeWeight::ByProduct(item, _) => {
+            PlanNodeWeight::ByProduct(item) => {
                 solved_graph.add_node(SolvedNodeWeight::new_by_product(Rc::clone(item), solution))
             }
             PlanNodeWeight::Production(recipe) => solved_graph.add_node(
@@ -151,7 +154,6 @@ pub fn copy_solution<S: Solution>(
         let weight = ItemValuePair::new(Rc::clone(&full_graph[e]), solution);
         solved_graph.add_edge(new_source, new_target, weight);
     }
-
 
     cleanup_by_product_nodes(&mut solved_graph);
     solved_graph

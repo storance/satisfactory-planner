@@ -45,7 +45,11 @@ fn main() {
 
     if args.full_plan_graph {
         let graph = crate::plan::build_full_plan(&plan).unwrap_or_else(|e| {
-            panic!("Failed to build full plan graph {}: {}", args.plan.display(), e);
+            panic!(
+                "Failed to build full plan graph {}: {}",
+                args.plan.display(),
+                e
+            );
         });
         print_graph(&graph);
     } else {

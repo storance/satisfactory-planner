@@ -1,4 +1,4 @@
-use crate::utils::{clamp_to_zero, FloatType, EPSILON, round};
+use crate::utils::{clamp_to_zero, round, FloatType, EPSILON};
 use std::cmp::Ordering;
 use std::fmt;
 use std::ops::{Add, AddAssign, Neg, Sub, SubAssign};
