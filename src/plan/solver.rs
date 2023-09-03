@@ -1,602 +1,147 @@
+use std::collections::HashMap;
+use good_lp::{minilp, variable, variables, Expression, SolverModel, Variable};
 use petgraph::{
     stable_graph::{EdgeIndex, NodeIndex},
     visit::EdgeRef,
     Direction::{Incoming, Outgoing},
 };
-use std::{collections::HashMap, rc::Rc};
-use thiserror::Error;
 
 use super::{
-    find_by_product_node, find_input_node, find_output_node, GraphType, Node, NodeEdge,
-    ScoredGraph, ScoredNodeValue,
-};
-use crate::{
-    game::{Item, ItemValuePair, Recipe},
-    plan::{find_production_node, NodeValue, PlanConfig},
-    utils::{clamp_to_zero, FloatType, EPSILON},
+    full_plan_graph::{build_full_plan, PlanNodeWeight},
+    solved_graph::{copy_solution, SolvedGraph}, PlanConfig,
 };
 
-#[derive(Error, Debug)]
-#[error("Unsolvable Plan: Unable to craft the desired quantity of `{0}`")]
-pub struct SolverError(String);
+pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
+    let full_graph = build_full_plan(config)?;
 
-pub type SolverResult<T> = Result<T, SolverError>;
+    let mut node_variables: HashMap<NodeIndex, Variable> = HashMap::new();
+    let mut edge_variables: HashMap<EdgeIndex, Variable> = HashMap::new();
+    let mut by_product_variables: HashMap<NodeIndex, Variable> = HashMap::new();
 
-pub fn solve(config: &PlanConfig) -> SolverResult<GraphType> {
-    Solver::new(config).solve()
-}
+    let mut vars = variables!();
+    let mut min_expr: Expression = 0.into();
 
-struct MergeCandidate {
-    index: NodeIndex,
-    desired_output: ItemValuePair,
-}
-
-impl MergeCandidate {
-    #[inline]
-    fn new(index: NodeIndex, desired_output: ItemValuePair) -> Self {
-        Self {
-            index,
-            desired_output,
-        }
-    }
-}
-
-struct Solver<'a> {
-    scored_graph: ScoredGraph<'a>,
-    input_limits: HashMap<Rc<Item>, FloatType>,
-}
-
-impl<'a> Solver<'a> {
-    fn new(config: &'a PlanConfig) -> Self {
-        let mut scored_graph = ScoredGraph::new(config);
-        scored_graph.build();
-
-        Self {
-            scored_graph,
-            input_limits: config.inputs.clone(),
-        }
-    }
-
-    #[inline]
-    fn get_limit(&self, item: &Rc<Item>) -> FloatType {
-        self.input_limits.get(item).copied().unwrap_or_default()
-    }
-
-    #[inline]
-    fn update_limit(&mut self, item: Rc<Item>, amount: FloatType) {
-        *self.input_limits.entry(item).or_default() += amount
-    }
-
-    fn solve(&mut self) -> SolverResult<GraphType> {
-        let mut graph: GraphType = GraphType::new();
-        for node in self.scored_graph.output_nodes.clone() {
-            let merge_candidate = MergeCandidate::new(node.index, node.value.clone());
-            self.copy_optimal_path(merge_candidate, &mut graph)?;
-        }
-        self.cleanup_by_product_nodes(&mut graph);
-
-        Ok(graph)
-    }
-
-    fn copy_optimal_path(
-        &mut self,
-        node: MergeCandidate,
-        graph: &mut GraphType,
-    ) -> SolverResult<(NodeIndex, ItemValuePair)> {
-        match &self.scored_graph.graph[node.index] {
-            ScoredNodeValue::Input(item) => {
-                assert!(node.desired_output.item == *item);
-                self.copy_input(node, graph)
-            }
-            ScoredNodeValue::Output(item) => {
-                assert!(node.desired_output.item == *item);
-                self.copy_output(node, graph)
-            }
-            ScoredNodeValue::Production(recipe) => {
-                self.copy_production(node, Rc::clone(recipe), graph)
-            }
-            ScoredNodeValue::ByProduct(bp) => {
-                assert!(node.desired_output.item == bp.item);
-                self.copy_by_product(node, graph)
-            }
-        }
-    }
-
-    fn copy_output(
-        &mut self,
-        candidate: MergeCandidate,
-        graph: &mut GraphType,
-    ) -> SolverResult<(NodeIndex, ItemValuePair)> {
-        let child_idx = self.scored_graph.output_child(candidate.index).unwrap();
-        let child_candidate = MergeCandidate::new(child_idx, candidate.desired_output.clone());
-        let (new_child_idx, leftover_output) = self.copy_optimal_path(child_candidate, graph)?;
-        if leftover_output.value > EPSILON {
-            return Err(SolverError(leftover_output.item.name.clone()));
-        }
-
-        let idx = Self::merge_output_node(candidate.desired_output.clone(), graph);
-        Self::merge_edge(
-            new_child_idx,
-            idx,
-            NodeEdge::new(candidate.desired_output, 0),
-            graph,
-        );
-
-        Ok((idx, leftover_output))
-    }
-
-    fn copy_by_product(
-        &mut self,
-        node: MergeCandidate,
-        graph: &mut GraphType,
-    ) -> SolverResult<(NodeIndex, ItemValuePair)> {
-        let mut remaining_output =
-            Self::calc_by_product_required_output(&node.desired_output, graph);
-        if remaining_output.is_zero() {
-            return Ok((
-                find_by_product_node(graph, &node.desired_output.item).unwrap(),
-                remaining_output,
-            ));
-        }
-
-        let mut new_children = Vec::new();
-        for child in self.scored_graph.by_product_children(node.index) {
-            if remaining_output.is_zero() {
-                break;
-            }
-
-            let child_candidate = MergeCandidate::new(child.1, remaining_output.clone());
-            if let Ok((new_idx, leftover)) = self.copy_optimal_path(child_candidate, graph) {
-                let used_output = remaining_output - leftover.value;
-                new_children.push((new_idx, used_output));
-                remaining_output = leftover;
-            }
-        }
-
-        let actual_output = &node.desired_output - &remaining_output;
-        if actual_output.is_zero() {
-            return Err(SolverError(node.desired_output.item.name.clone()));
-        }
-
-        let idx = Self::merge_by_product_node(actual_output, graph);
-        for (order, child) in new_children.iter().enumerate() {
-            Self::merge_edge(
-                child.0,
-                idx,
-                NodeEdge::new(child.1.clone(), order as u32),
-                graph,
-            );
-        }
-
-        Ok((idx, remaining_output))
-    }
-
-    fn copy_production(
-        &mut self,
-        candidate: MergeCandidate,
-        recipe: Rc<Recipe>,
-        graph: &mut GraphType,
-    ) -> SolverResult<(NodeIndex, ItemValuePair)> {
-        let recipe_output = recipe
-            .find_output_by_item(&candidate.desired_output.item)
-            .unwrap();
-        let desired_building_count = candidate.desired_output.ratio(recipe_output);
-
-        let mut actual_building_count = desired_building_count;
-        let mut new_children: Vec<(NodeIndex, ItemValuePair, FloatType)> = Vec::new();
-        for (edge, node) in self.scored_graph.production_children(candidate.index) {
-            let item = &self.scored_graph[edge].item;
-            let recipe_input = recipe.find_input_by_item(item).unwrap();
-            let desired_output = recipe_input.mul(actual_building_count);
-
-            let child_candidate = MergeCandidate::new(node, desired_output.clone());
-            match self.copy_optimal_path(child_candidate, graph) {
-                Ok((child_index, leftover_output)) => {
-                    let used_output = desired_output - leftover_output;
-                    let building_count = used_output.ratio(recipe_input);
-                    actual_building_count = actual_building_count.min(building_count);
-                    new_children.push((child_index, used_output, building_count));
-                }
-                Err(..) => {
-                    actual_building_count = 0.0;
-                }
-            }
-
-            // floating points errors might give us very small positive or negative numbers,
-            // so just clamp those to 0
-            actual_building_count = clamp_to_zero(actual_building_count);
-            if actual_building_count == 0.0 {
-                break;
-            }
-        }
-
-        let result = if actual_building_count > 0.0 {
-            let node_idx =
-                Self::merge_production_node(Rc::clone(&recipe), actual_building_count, graph);
-
-            Self::merge_by_products_for_other_outputs(
-                node_idx,
-                recipe
-                    .outputs
-                    .iter()
-                    .filter(|o| o.item != candidate.desired_output.item),
-                actual_building_count,
-                graph,
-            );
-
-            for (order, child) in new_children.iter().enumerate() {
-                let output_value = child.1.mul(actual_building_count / child.2);
-
-                Self::merge_edge(
-                    child.0,
-                    node_idx,
-                    NodeEdge::new(output_value, order as u32),
-                    graph,
-                );
-            }
-
-            Ok((
-                node_idx,
-                candidate
-                    .desired_output
-                    .mul(1.0 - actual_building_count / desired_building_count),
-            ))
-        } else {
-            Err(SolverError(candidate.desired_output.item.name.clone()))
-        };
-
-        // before returning, we need to propagate any difference between our initial calculated
-        // building count and the actual building count based on what is possible from our inputs
-        if actual_building_count <= desired_building_count {
-            for child in new_children {
-                let reduced_value = child.1.mul(1.0 - actual_building_count / child.2);
-                self.propagate_reduction(child.0, reduced_value, graph);
-            }
-        }
-
-        result
-    }
-
-    fn copy_input(
-        &mut self,
-        node: MergeCandidate,
-        graph: &mut GraphType,
-    ) -> SolverResult<(NodeIndex, ItemValuePair)> {
-        let available_input = FloatType::min(
-            node.desired_output.value,
-            self.get_limit(&node.desired_output.item),
-        );
-        if available_input <= 0.0 {
-            return Err(SolverError(node.desired_output.item.name.clone()));
-        }
-
-        let node_index = match find_input_node(graph, &node.desired_output.item) {
-            Some(existing_index) => {
-                *graph[existing_index].as_input_mut() += available_input;
-                existing_index
-            }
-            None => graph.add_node(NodeValue::Input(
-                node.desired_output.with_value(available_input),
-            )),
-        };
-
-        self.update_limit(Rc::clone(&node.desired_output.item), -available_input);
-        Ok((node_index, node.desired_output - available_input))
-    }
-
-    fn calc_by_product_required_output(
-        desired_output: &ItemValuePair,
-        graph: &mut GraphType,
-    ) -> ItemValuePair {
-        match find_by_product_node(graph, &desired_output.item) {
-            Some(node_idx) => {
-                let mut used_output = 0.0;
-                for edge in graph.edges_directed(node_idx, Outgoing) {
-                    used_output += edge.weight().value.value;
-                }
-
-                let remaining_output = graph[node_idx].as_by_product().clone() - used_output;
-                if remaining_output > *desired_output {
-                    desired_output.with_value(0.0)
+    for i in full_graph.node_indices() {
+        match &full_graph[i] {
+            PlanNodeWeight::Input(item) => {
+                let var = vars.add(variable().min(0.0));
+                let weight = if item.resource {
+                    let limit = config.game_db.get_resource_limit(item);
+                    if limit == 0.0 {
+                        0.0
+                    } else {
+                        1.0 / limit
+                    }
                 } else {
-                    desired_output - remaining_output
-                }
-            }
-            None => desired_output.clone(),
-        }
-    }
+                    0.0
+                };
 
-    fn propagate_reduction(
-        &mut self,
-        node_index: NodeIndex,
-        amount: ItemValuePair,
-        graph: &mut GraphType,
-    ) -> bool {
-        if amount.value < EPSILON {
-            return false;
-        }
-
-        match graph[node_index] {
-            NodeValue::Input(..) => self.propagate_reduction_input_node(node_index, amount, graph),
-            NodeValue::Production(..) => {
-                self.propagate_reduction_production_node(node_index, amount, graph)
+                min_expr += var * weight;
+                node_variables.insert(i, var);
             }
-            NodeValue::ByProduct(..) => {
-                self.propagate_reduction_by_product_node(node_index, amount, graph)
+            PlanNodeWeight::ByProduct(..) => {
+                let var = vars.add(variable().min(0.0));
+                let excess_var = vars.add(variable().min(0.0));
+
+                // TODO: do we want to try to minimize by products? Maybe make it an option?
+                //min_expr += excess_var;
+                node_variables.insert(i, var);
+                by_product_variables.insert(i, excess_var);
             }
             _ => {
-                panic!("Output nodes can not be reduced");
+                node_variables.insert(i, vars.add(variable().min(0.0)));
             }
         }
     }
 
-    fn propagate_reduction_input_node(
-        &mut self,
-        node_index: NodeIndex,
-        amount: ItemValuePair,
-        graph: &mut GraphType,
-    ) -> bool {
-        let input = graph[node_index].as_input();
-        let new_value = FloatType::max(0.0, input.value - amount.value);
-
-        self.update_limit(Rc::clone(&input.item), input.value - new_value);
-        if new_value < EPSILON {
-            graph.remove_node(node_index);
-            true
-        } else {
-            graph[node_index].as_input_mut().value = new_value;
-            false
-        }
+    for e in full_graph.edge_indices() {
+        edge_variables.insert(e, vars.add(variable().min(0.0)));
     }
 
-    fn propagate_reduction_production_node(
-        &mut self,
-        idx: NodeIndex,
-        amount: ItemValuePair,
-        graph: &mut GraphType,
-    ) -> bool {
-        if amount.value < EPSILON {
-            return false;
-        }
+    let mut problem = vars.minimise(min_expr).using(minilp);
 
-        let production = graph[idx].as_production().clone();
-        let recipe_output = production.recipe.find_output_by_item(&amount.item).unwrap();
-        let new_building_count =
-            FloatType::max(0.0, production.machine_count - amount.ratio(recipe_output));
-        graph[idx].as_production_mut().machine_count = new_building_count;
+    for i in full_graph.node_indices() {
+        let var = *node_variables.get(&i).unwrap();
 
-        let mut children: Vec<(EdgeIndex, NodeIndex)> = graph
-            .edges_directed(idx, Incoming)
-            .map(|e| (e.id(), e.source()))
-            .collect();
-        children.sort_unstable_by(|a, b| graph[a.0].order.cmp(&graph[b.0].order).reverse());
-
-        for (edge_idx, child_idx) in children {
-            let recipe_input = production
-                .recipe
-                .find_input_by_item(&graph[edge_idx].value.item)
-                .unwrap();
-            let reduce_amount =
-                graph[edge_idx].value.clone() - recipe_input.mul(new_building_count).value;
-
-            graph[edge_idx].value -= reduce_amount.value;
-            self.propagate_reduction(child_idx, reduce_amount, graph);
-        }
-
-        let mut parent_walker = graph.neighbors_directed(idx, Outgoing).detach();
-        while let Some((edge_idx, parent_idx)) = parent_walker.next(graph) {
-            let item = &graph[parent_idx].as_by_product().item;
-            if *item == amount.item {
-                continue;
-            }
-
-            let recipe_output = production.recipe.find_output_by_item(item).unwrap();
-            let new_amount = recipe_output.mul(new_building_count).value;
-            graph[edge_idx].value.value = new_amount;
-            graph[parent_idx].as_by_product_mut().value = new_amount;
-        }
-
-        if new_building_count <= 0.0 {
-            graph.remove_node(idx);
-            true
-        } else {
-            false
-        }
-    }
-
-    fn propagate_reduction_by_product_node(
-        &mut self,
-        node_index: NodeIndex,
-        amount: ItemValuePair,
-        graph: &mut GraphType,
-    ) -> bool {
-        if amount.value < EPSILON {
-            return false;
-        }
-
-        *graph[node_index].as_by_product_mut() -= amount.value;
-
-        let mut children: Vec<(EdgeIndex, NodeIndex)> = graph
-            .edges_directed(node_index, Incoming)
-            .map(|e| (e.id(), e.source()))
-            .collect();
-        children.sort_unstable_by(|a, b| graph[a.0].order.cmp(&graph[b.0].order).reverse());
-
-        let mut all_deleted = false;
-        let mut remaining_amount = amount;
-        for child in children {
-            if remaining_amount.is_zero() {
-                break;
-            }
-
-            let reduce_amount = if remaining_amount > graph[child.0].value {
-                graph[child.0].value.clone()
-            } else {
-                remaining_amount.clone()
-            };
-            remaining_amount -= reduce_amount.value;
-
-            graph[child.0].value -= reduce_amount.value;
-            all_deleted &= self.propagate_reduction(child.1, reduce_amount, graph);
-        }
-
-        if all_deleted {
-            graph.remove_node(node_index);
-        }
-
-        all_deleted
-    }
-
-    fn merge_output_node(output: ItemValuePair, graph: &mut GraphType) -> NodeIndex {
-        match find_output_node(graph, &output.item) {
-            Some(existing_index) => {
-                graph[existing_index].as_output_mut().value += output.value;
-                existing_index
-            }
-            None => graph.add_node(NodeValue::new_output(output)),
-        }
-    }
-
-    fn merge_production_node(
-        recipe: Rc<Recipe>,
-        machine_count: FloatType,
-        graph: &mut GraphType,
-    ) -> NodeIndex {
-        match find_production_node(graph, &recipe) {
-            Some(existing_index) => {
-                graph[existing_index].as_production_mut().machine_count += machine_count;
-                existing_index
-            }
-            None => graph.add_node(NodeValue::new_production(recipe, machine_count)),
-        }
-    }
-
-    fn merge_by_product_node(output: ItemValuePair, graph: &mut GraphType) -> NodeIndex {
-        match find_by_product_node(graph, &output.item) {
-            Some(existing_index) => {
-                *graph[existing_index].as_by_product_mut() += output.value;
-                existing_index
-            }
-            None => graph.add_node(NodeValue::new_by_product(output)),
-        }
-    }
-
-    fn merge_by_products_for_other_outputs<'b>(
-        node_idx: NodeIndex,
-        recipe_outputs: impl Iterator<Item = &'b ItemValuePair>,
-        building_count: f32,
-        graph: &mut GraphType,
-    ) {
-        for recipe_output in recipe_outputs {
-            let extra_output = recipe_output.mul(building_count);
-            let parent_idx = Self::merge_by_product_node(extra_output.clone(), graph);
-
-            Self::merge_edge(node_idx, parent_idx, NodeEdge::new(extra_output, 0), graph);
-        }
-    }
-
-    fn merge_edge(
-        child_index: NodeIndex,
-        parent_index: NodeIndex,
-        weight: NodeEdge,
-        graph: &mut GraphType,
-    ) {
-        if let Some(edge_index) = graph.find_edge(child_index, parent_index) {
-            assert!(graph[edge_index].item() == weight.item());
-            graph[edge_index].value += weight.value();
-            graph[edge_index].order = graph[edge_index].order.max(weight.order);
-        } else {
-            graph.add_edge(child_index, parent_index, weight);
-        }
-    }
-
-    fn cleanup_by_product_nodes(&self, graph: &mut GraphType) {
-        let by_product_nodes: Vec<NodeIndex> = graph
-            .node_indices()
-            .filter(|i| graph[*i].is_by_product())
-            .collect();
-
-        by_product_nodes
-            .iter()
-            .for_each(|i| self.cleanup_by_product(*i, graph));
-    }
-
-    fn cleanup_by_product(&self, node_idx: NodeIndex, graph: &mut GraphType) {
-        let mut parents: Vec<(NodeIndex, ItemValuePair)> = graph
-            .edges_directed(node_idx, Outgoing)
-            .map(|e| (e.target(), e.weight().value.clone()))
-            .collect();
-        let mut children: Vec<(NodeIndex, ItemValuePair)> = graph
-            .edges_directed(node_idx, Incoming)
-            .map(|e| (e.source(), e.weight().value.clone()))
-            .collect();
-
-        parents.sort_unstable_by(|a, b| a.1.cmp(&b.1));
-        children.sort_unstable_by(|a, b| a.1.cmp(&b.1).reverse());
-
-        let mut current_child = children.pop().unwrap();
-        for parent in parents {
-            let mut remaining_output = parent.1;
-            loop {
-                if current_child.1.is_zero() {
-                    Self::delete_edge_between(graph, current_child.0, node_idx);
-                    current_child = children.pop().unwrap();
+        match &full_graph[i] {
+            PlanNodeWeight::Output(item) => {
+                let mut edge_sum: Expression = 0.into();
+                for edge in full_graph.edges_directed(i, Incoming) {
+                    let edge_var = edge_variables.get(&edge.id()).unwrap();
+                    edge_sum += edge_var;
                 }
 
-                if remaining_output > current_child.1 {
-                    graph.add_edge(
-                        current_child.0,
-                        parent.0,
-                        NodeEdge::new(current_child.1.clone(), 0),
-                    );
-                    remaining_output -= current_child.1.value;
-                    current_child.1.value = 0.0;
-                } else {
-                    graph.add_edge(
-                        current_child.0,
-                        parent.0,
-                        NodeEdge::new(remaining_output.clone(), 0),
-                    );
-                    current_child.1 -= remaining_output.value;
-                    remaining_output.value = 0.0;
-                    break;
+                let desired_output = config.find_output(item);
+                problem = problem
+                    .with(Expression::from(var).eq(desired_output))
+                    .with(edge_sum.eq(var));
+            }
+            PlanNodeWeight::Input(item) => {
+                let mut edge_sum: Expression = 0.into();
+                for edge in full_graph.edges_directed(i, Outgoing) {
+                    let edge_var = edge_variables.get(&edge.id()).unwrap();
+                    edge_sum += edge_var;
+                }
+
+                let limit = config.find_input(item);
+                problem = problem
+                    .with(Expression::from(var).leq(limit))
+                    .with(edge_sum.eq(var));
+            }
+            PlanNodeWeight::ByProduct(..) => {
+                let excess_var = *by_product_variables.get(&i).unwrap();
+
+                let mut incoming_sum: Expression = 0.into();
+                for edge in full_graph.edges_directed(i, Incoming) {
+                    let edge_var = edge_variables.get(&edge.id()).unwrap();
+                    incoming_sum += edge_var;
+                }
+
+                let mut outgoing_sum: Expression = excess_var.into();
+                for edge in full_graph.edges_directed(i, Outgoing) {
+                    let edge_var = edge_variables.get(&edge.id()).unwrap();
+                    outgoing_sum += edge_var;
+                }
+
+                problem = problem
+                    .with(incoming_sum.eq(var))
+                    .with(outgoing_sum.eq(var));
+            }
+            PlanNodeWeight::Production(recipe) => {
+                for edge in full_graph.edges_directed(i, Outgoing) {
+                    let edge_var = edge_variables.get(&edge.id()).unwrap();
+                    let recipe_output = recipe.find_output_by_item(&edge.weight()).unwrap();
+
+                    problem = problem.with((var * recipe_output.value).eq(edge_var));
+                }
+
+                for edge in full_graph.edges_directed(i, Incoming) {
+                    let edge_var = edge_variables.get(&edge.id()).unwrap();
+                    let recipe_input = recipe.find_input_by_item(&edge.weight()).unwrap();
+
+                    problem = problem.with((var * recipe_input.value).eq(edge_var));
                 }
             }
-            Self::delete_edge_between(graph, node_idx, parent.0);
-        }
-
-        let remaining_output = clamp_to_zero(
-            current_child.1.value + children.iter().map(|c| c.1.value).sum::<FloatType>(),
-        );
-        if remaining_output > 0.0 {
-            graph[node_idx].as_by_product_mut().value = remaining_output;
-
-            if !current_child.1.is_zero() {
-                let edge_index = graph.find_edge(current_child.0, node_idx).unwrap();
-                graph[edge_index].value = current_child.1
-            }
-        } else {
-            graph.remove_node(node_idx);
         }
     }
 
-    fn delete_edge_between(graph: &mut GraphType, a: NodeIndex, b: NodeIndex) -> bool {
-        graph
-            .find_edge(a, b)
-            .map(|e| {
-                graph.remove_edge(e);
-                true
-            })
-            .unwrap_or(false)
-    }
+    let solution = problem.solve()?;
+    Ok(copy_solution(
+        &full_graph,
+        solution,
+        node_variables,
+        edge_variables,
+    ))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::game::test::get_test_game_db_with_recipes;
+    use std::rc::Rc;
+    use petgraph::visit::IntoEdgeReferences;
+
+    use crate::{game::{test::get_test_game_db_with_recipes, ItemValuePair}, plan::{solved_graph::SolvedNodeWeight, print_graph}, utils::{FloatType, EPSILON}};
 
     use super::*;
-    use petgraph::visit::IntoEdgeReferences;
 
     #[test]
     fn test_single_production_node() {
@@ -612,29 +157,29 @@ mod tests {
             game_db.clone(),
         );
 
-        let mut expected_graph = GraphType::new();
-        let output_idx = expected_graph.add_node(NodeValue::new_output(ItemValuePair::new(
+        let mut expected_graph = SolvedGraph::new();
+        let output_idx = expected_graph.add_node(SolvedNodeWeight::new_output(
             Rc::clone(&iron_ingot),
             30.0,
-        )));
-        let smelter_idx = expected_graph.add_node(NodeValue::new_production(
+        ));
+        let smelter_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
             Rc::clone(&iron_ingot_recipe),
             1.0,
         ));
-        let input_idx = expected_graph.add_node(NodeValue::new_input(ItemValuePair::new(
+        let input_idx = expected_graph.add_node(SolvedNodeWeight::new_input(
             Rc::clone(&iron_ore),
             30.0,
-        )));
+        ));
 
         expected_graph.add_edge(
             smelter_idx,
             output_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&iron_ingot), 30.0), 0),
+            ItemValuePair::new(Rc::clone(&iron_ingot), 30.0),
         );
         expected_graph.add_edge(
             input_idx,
             smelter_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&iron_ore), 30.0), 0),
+            ItemValuePair::new(Rc::clone(&iron_ore), 30.0),
         );
         let result = solve(&config);
 
@@ -662,39 +207,39 @@ mod tests {
             game_db,
         );
 
-        let mut expected_graph = GraphType::new();
-        let output_idx = expected_graph.add_node(NodeValue::new_output(ItemValuePair::new(
+        let mut expected_graph = SolvedGraph::new();
+        let output_idx = expected_graph.add_node(SolvedNodeWeight::new_output(
             Rc::clone(&iron_ingot),
             65.0,
-        )));
-        let refinery_idx = expected_graph.add_node(NodeValue::new_production(
+        ));
+        let refinery_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
             Rc::clone(&iron_ingot_recipe),
             1.0,
         ));
-        let ore_input_idx = expected_graph.add_node(NodeValue::new_input(ItemValuePair::new(
+        let ore_input_idx = expected_graph.add_node(SolvedNodeWeight::new_input(
             Rc::clone(&iron_ore),
             35.0,
-        )));
+        ));
 
-        let water_input_idx = expected_graph.add_node(NodeValue::new_input(ItemValuePair::new(
+        let water_input_idx = expected_graph.add_node(SolvedNodeWeight::new_input(
             Rc::clone(&water),
             20.0,
-        )));
+        ));
 
         expected_graph.add_edge(
             refinery_idx,
             output_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&iron_ingot), 65.0), 0),
+            ItemValuePair::new(Rc::clone(&iron_ingot), 65.0),
         );
         expected_graph.add_edge(
             ore_input_idx,
             refinery_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&iron_ore), 35.0), 0),
+            ItemValuePair::new(Rc::clone(&iron_ore), 35.0),
         );
         expected_graph.add_edge(
             water_input_idx,
             refinery_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&water), 20.0), 0),
+            ItemValuePair::new(Rc::clone(&water), 20.0),
         );
         let result = solve(&config);
 
@@ -727,58 +272,58 @@ mod tests {
             game_db,
         );
 
-        let mut expected_graph = GraphType::new();
-        let plate_output_idx = expected_graph.add_node(NodeValue::new_output(ItemValuePair::new(
+        let mut expected_graph = SolvedGraph::new();
+        let plate_output_idx = expected_graph.add_node(SolvedNodeWeight::new_output(
             Rc::clone(&iron_plate),
             60.0,
-        )));
-        let rod_output_idx = expected_graph.add_node(NodeValue::new_output(ItemValuePair::new(
+        ));
+        let rod_output_idx = expected_graph.add_node(SolvedNodeWeight::new_output(
             Rc::clone(&iron_rod),
             30.0,
-        )));
+        ));
 
-        let plate_prod_idx = expected_graph.add_node(NodeValue::new_production(
+        let plate_prod_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
             Rc::clone(&iron_plate_recipe),
             3.0,
         ));
         let rod_prod_idx =
-            expected_graph.add_node(NodeValue::new_production(Rc::clone(&iron_rod_recipe), 2.0));
-        let smelter_idx = expected_graph.add_node(NodeValue::new_production(
+            expected_graph.add_node(SolvedNodeWeight::new_production(Rc::clone(&iron_rod_recipe), 2.0));
+        let smelter_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
             Rc::clone(&iron_ingot_recipe),
             4.0,
         ));
-        let input_idx = expected_graph.add_node(NodeValue::new_input(ItemValuePair::new(
+        let input_idx = expected_graph.add_node(SolvedNodeWeight::new_input(
             Rc::clone(&iron_ore),
             120.0,
-        )));
+        ));
 
         expected_graph.add_edge(
             plate_prod_idx,
             plate_output_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&iron_plate), 60.0), 0),
+            ItemValuePair::new(Rc::clone(&iron_plate), 60.0),
         );
 
         expected_graph.add_edge(
             rod_prod_idx,
             rod_output_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&iron_rod), 30.0), 0),
+            ItemValuePair::new(Rc::clone(&iron_rod), 30.0),
         );
 
         expected_graph.add_edge(
             smelter_idx,
             rod_prod_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&iron_ingot), 30.0), 0),
+            ItemValuePair::new(Rc::clone(&iron_ingot), 30.0),
         );
 
         expected_graph.add_edge(
             smelter_idx,
             plate_prod_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&iron_ingot), 90.0), 0),
+            ItemValuePair::new(Rc::clone(&iron_ingot), 90.0),
         );
         expected_graph.add_edge(
             input_idx,
             smelter_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&iron_ore), 120.0), 0),
+            ItemValuePair::new(Rc::clone(&iron_ore), 120.0),
         );
         let result = solve(&config);
 
@@ -826,113 +371,113 @@ mod tests {
             game_db,
         );
 
-        let mut expected_graph = GraphType::new();
-        let output_idx = expected_graph.add_node(NodeValue::new_output(ItemValuePair::new(
+        let mut expected_graph = SolvedGraph::new();
+        let output_idx = expected_graph.add_node(SolvedNodeWeight::new_output(
             Rc::clone(&wire),
             232.5,
-        )));
+        ));
 
-        let cat_wire_idx = expected_graph.add_node(NodeValue::new_production(
+        let cat_wire_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
             Rc::clone(&caterium_wire_recipe),
             1.0,
         ));
 
-        let fused_wire_idx = expected_graph.add_node(NodeValue::new_production(
+        let fused_wire_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
             Rc::clone(&fused_wire_recipe),
             1.0,
         ));
 
         let iron_wire_idx =
-            expected_graph.add_node(NodeValue::new_production(Rc::clone(&iron_wire_recipe), 1.0));
+            expected_graph.add_node(SolvedNodeWeight::new_production(Rc::clone(&iron_wire_recipe), 1.0));
 
-        let iron_ingot_idx = expected_graph.add_node(NodeValue::new_production(
+        let iron_ingot_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
             Rc::clone(&iron_ingot_recipe),
             12.5 / 30.0,
         ));
 
-        let copper_ingot_idx = expected_graph.add_node(NodeValue::new_production(
+        let copper_ingot_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
             Rc::clone(&copper_ingot_recipe),
             0.4,
         ));
 
-        let cat_ingot_idx = expected_graph.add_node(NodeValue::new_production(
+        let cat_ingot_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
             Rc::clone(&caterium_ingot_recipe),
             1.2,
         ));
 
-        let iron_ore_idx = expected_graph.add_node(NodeValue::new_input(ItemValuePair::new(
+        let iron_ore_idx = expected_graph.add_node(SolvedNodeWeight::new_input(
             Rc::clone(&iron_ore),
             12.5,
-        )));
+        ));
 
-        let copper_ore_idx = expected_graph.add_node(NodeValue::new_input(ItemValuePair::new(
+        let copper_ore_idx = expected_graph.add_node(SolvedNodeWeight::new_input(
             Rc::clone(&copper_ore),
             12.0,
-        )));
+        ));
 
-        let cat_ore_idx = expected_graph.add_node(NodeValue::new_input(ItemValuePair::new(
+        let cat_ore_idx = expected_graph.add_node(SolvedNodeWeight::new_input(
             Rc::clone(&caterium_ore),
             54.0,
-        )));
+        ));
 
         expected_graph.add_edge(
             cat_wire_idx,
             output_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&wire), 120.0), 2),
+            ItemValuePair::new(Rc::clone(&wire), 120.0),
         );
 
         expected_graph.add_edge(
             fused_wire_idx,
             output_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&wire), 90.0), 0),
+            ItemValuePair::new(Rc::clone(&wire), 90.0),
         );
 
         expected_graph.add_edge(
             iron_wire_idx,
             output_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&wire), 22.5), 0),
+            ItemValuePair::new(Rc::clone(&wire), 22.5),
         );
 
         expected_graph.add_edge(
             cat_ingot_idx,
             cat_wire_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&caterium_ingot), 15.0), 2),
+            ItemValuePair::new(Rc::clone(&caterium_ingot), 15.0),
         );
 
         expected_graph.add_edge(
             cat_ingot_idx,
             fused_wire_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&caterium_ingot), 3.0), 2),
+            ItemValuePair::new(Rc::clone(&caterium_ingot), 3.0),
         );
 
         expected_graph.add_edge(
             copper_ingot_idx,
             fused_wire_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&copper_ingot), 12.0), 2),
+            ItemValuePair::new(Rc::clone(&copper_ingot), 12.0),
         );
 
         expected_graph.add_edge(
             iron_ingot_idx,
             iron_wire_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&iron_ingot), 12.5), 2),
+            ItemValuePair::new(Rc::clone(&iron_ingot), 12.5),
         );
 
         expected_graph.add_edge(
             iron_ore_idx,
             iron_ingot_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&iron_ore), 12.5), 2),
+            ItemValuePair::new(Rc::clone(&iron_ore), 12.5),
         );
 
         expected_graph.add_edge(
             copper_ore_idx,
             copper_ingot_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&copper_ore), 12.0), 2),
+            ItemValuePair::new(Rc::clone(&copper_ore), 12.0),
         );
 
         expected_graph.add_edge(
             cat_ore_idx,
             cat_ingot_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&caterium_ore), 54.0), 2),
+            ItemValuePair::new(Rc::clone(&caterium_ore), 54.0),
         );
 
         let result = solve(&config);
@@ -970,91 +515,95 @@ mod tests {
             game_db,
         );
 
-        let mut expected_graph = GraphType::new();
-        let fuel_output_idx = expected_graph.add_node(NodeValue::new_output(ItemValuePair::new(
+        let mut expected_graph = SolvedGraph::new();
+        let fuel_output_idx = expected_graph.add_node(SolvedNodeWeight::new_output(
             Rc::clone(&fuel),
             180.0,
-        )));
-        let plastic_output_idx = expected_graph.add_node(NodeValue::new_output(
-            ItemValuePair::new(Rc::clone(&plastic), 30.0),
+        ));
+        let plastic_output_idx = expected_graph.add_node(SolvedNodeWeight::new_output(
+            Rc::clone(&plastic), 30.0,
         ));
 
-        let resin_by_prod_idx = expected_graph.add_node(NodeValue::new_by_product(
-            ItemValuePair::new(Rc::clone(&polymer_resin), 45.0),
+        let resin_by_prod_idx = expected_graph.add_node(SolvedNodeWeight::new_by_product(
+            Rc::clone(&polymer_resin), 45.0,
         ));
 
         let hor_idx =
-            expected_graph.add_node(NodeValue::new_production(Rc::clone(&hor_recipe), 6.75));
+            expected_graph.add_node(SolvedNodeWeight::new_production(Rc::clone(&hor_recipe), 6.75));
 
-        let plastic_idx = expected_graph.add_node(NodeValue::new_production(
+        let plastic_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
             Rc::clone(&residual_plastic_recipe),
             1.5,
         ));
 
-        let fuel_idx = expected_graph.add_node(NodeValue::new_production(
+        let fuel_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
             Rc::clone(&residual_fuel_recipe),
             4.5,
         ));
 
-        let oil_input_idx = expected_graph.add_node(NodeValue::new_input(ItemValuePair::new(
+        let oil_input_idx = expected_graph.add_node(SolvedNodeWeight::new_input(
             Rc::clone(&oil),
             202.5,
-        )));
+        ));
 
-        let water_idx = expected_graph.add_node(NodeValue::new_input(ItemValuePair::new(
+        let water_idx = expected_graph.add_node(SolvedNodeWeight::new_input(
             Rc::clone(&water),
             30.0,
-        )));
+        ));
 
         expected_graph.add_edge(
             fuel_idx,
             fuel_output_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&fuel), 180.0), 0),
+            ItemValuePair::new(Rc::clone(&fuel), 180.0),
         );
 
         expected_graph.add_edge(
             hor_idx,
             fuel_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&heavy_oil_residue), 270.0), 0),
+            ItemValuePair::new(Rc::clone(&heavy_oil_residue), 270.0),
         );
 
         expected_graph.add_edge(
             hor_idx,
             resin_by_prod_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&polymer_resin), 45.0), 0),
+            ItemValuePair::new(Rc::clone(&polymer_resin), 45.0),
         );
 
         expected_graph.add_edge(
             hor_idx,
             plastic_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&polymer_resin), 90.0), 0),
+            ItemValuePair::new(Rc::clone(&polymer_resin), 90.0),
         );
 
         expected_graph.add_edge(
             water_idx,
             plastic_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&water), 30.0), 0),
+            ItemValuePair::new(Rc::clone(&water), 30.0),
         );
 
         expected_graph.add_edge(
             plastic_idx,
             plastic_output_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&plastic), 30.0), 0),
+            ItemValuePair::new(Rc::clone(&plastic), 30.0),
         );
 
         expected_graph.add_edge(
             oil_input_idx,
             hor_idx,
-            NodeEdge::new(ItemValuePair::new(Rc::clone(&oil), 202.5), 0),
+            ItemValuePair::new(Rc::clone(&oil), 202.5),
         );
 
-        let result = solve(&config);
+        let result = solve(&config).unwrap_or_else(|e| {
+            panic!("Failed to solve plan: {}", e);
+        });
 
-        assert!(result.is_ok(), "{:?}", result);
-        assert_graphs_equal(result.unwrap(), expected_graph);
+        //assert!(result.is_ok(), "{:?}", result);
+        assert_graphs_equal(result, expected_graph);
     }
 
-    fn assert_graphs_equal(actual: GraphType, expected: GraphType) {
+    fn assert_graphs_equal(actual: SolvedGraph, expected: SolvedGraph) {
+        print_graph(&actual);
+
         let mut node_mapping: HashMap<NodeIndex, NodeIndex> = HashMap::new();
 
         for i in expected.node_indices() {
@@ -1086,7 +635,7 @@ mod tests {
                 });
 
             assert!(
-                item_value_pair_equals(&actual[actual_edge].value, &edge.weight().value),
+                item_value_pair_equals(&actual[actual_edge], &edge.weight()),
                 "Mismatched weight for the edge connecting {} to {}. Expected: {}, actual: {}",
                 format_node(&expected[edge.source()]),
                 format_node(&expected[edge.target()]),
@@ -1099,13 +648,13 @@ mod tests {
         assert!(actual.edge_count() == expected.edge_count());
     }
 
-    fn node_equals(a_node: &NodeValue, b_node: &NodeValue) -> bool {
+    fn node_equals(a_node: &SolvedNodeWeight, b_node: &SolvedNodeWeight) -> bool {
         match (a_node, b_node) {
-            (NodeValue::Input(a), NodeValue::Input(b)) => item_value_pair_equals(a, b),
-            (NodeValue::Output(a), NodeValue::Output(b)) => item_value_pair_equals(a, b),
-            (NodeValue::ByProduct(a), NodeValue::ByProduct(b)) => item_value_pair_equals(a, b),
-            (NodeValue::Production(a), NodeValue::Production(b)) => {
-                a.recipe == b.recipe && float_equals(a.machine_count, b.machine_count)
+            (SolvedNodeWeight::Input(a), SolvedNodeWeight::Input(b)) => item_value_pair_equals(a, b),
+            (SolvedNodeWeight::Output(a), SolvedNodeWeight::Output(b)) => item_value_pair_equals(a, b),
+            (SolvedNodeWeight::ByProduct(a), SolvedNodeWeight::ByProduct(b)) => item_value_pair_equals(a, b),
+            (SolvedNodeWeight::Production(a_recipe, a_building_count), SolvedNodeWeight::Production(b_recipe, b_building_count)) => {
+                a_recipe == b_recipe && float_equals(*a_building_count, *b_building_count)
             }
             _ => false,
         }
@@ -1119,19 +668,19 @@ mod tests {
         FloatType::abs(a - b) < EPSILON
     }
 
-    fn format_node(node: &NodeValue) -> String {
+    fn format_node(node: &SolvedNodeWeight) -> String {
         match node {
-            NodeValue::Input(input) => format!("Input({}:{})", input.item, input.value),
-            NodeValue::Output(output) => format!("Output({}:{})", output.item, output.value),
-            NodeValue::ByProduct(output) => format!("ByProduct({}:{})", output.item, output.value),
-            NodeValue::Production(production) => format!(
+            SolvedNodeWeight::Input(input) => format!("Input({}:{})", input.item, input.value),
+            SolvedNodeWeight::Output(output) => format!("Output({}:{})", output.item, output.value),
+            SolvedNodeWeight::ByProduct(output) => format!("ByProduct({}:{})", output.item, output.value),
+            SolvedNodeWeight::Production(recipe, building_count) => format!(
                 "Production({}, {})",
-                production.recipe.name, production.machine_count
+                recipe.name, building_count
             ),
         }
     }
 
-    fn format_graph_nodes(graph: &GraphType) -> String {
+    fn format_graph_nodes(graph: &SolvedGraph) -> String {
         let all_nodes: Vec<String> = graph.node_weights().map(format_node).collect();
         format!("[{}]", all_nodes.join(", "))
     }

@@ -1,11 +1,5 @@
-#[cfg(not(feature = "f64"))]
-pub type FloatType = f32;
-#[cfg(feature = "f64")]
 pub type FloatType = f64;
 
-#[cfg(not(feature = "f64"))]
-pub const EPSILON: FloatType = 0.0001;
-#[cfg(feature = "f64")]
 pub const EPSILON: FloatType = 0.000001;
 
 const BASE_10: FloatType = 10.0;
@@ -22,4 +16,8 @@ pub fn clamp_to_zero(value: FloatType) -> FloatType {
     } else {
         value
     }
+}
+
+pub fn is_zero(value: FloatType) -> bool {
+    value.abs() < EPSILON
 }

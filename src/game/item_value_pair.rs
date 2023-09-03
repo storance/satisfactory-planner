@@ -1,13 +1,12 @@
-use crate::utils::{clamp_to_zero, FloatType, EPSILON};
+use crate::utils::{clamp_to_zero, FloatType, EPSILON, round};
 use std::cmp::Ordering;
 use std::fmt;
-use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Neg, Sub, SubAssign};
 use std::rc::Rc;
 
 use super::Item;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct ItemValuePair {
     pub item: Rc<Item>,
     pub value: FloatType,
@@ -27,6 +26,13 @@ impl ItemValuePair {
         Self {
             item: Rc::clone(&self.item),
             value,
+        }
+    }
+
+    pub fn clamp(&self, min_value: FloatType, max_value: FloatType) -> Self {
+        Self {
+            item: Rc::clone(&self.item),
+            value: self.value.min(max_value).max(min_value),
         }
     }
 
@@ -226,8 +232,17 @@ impl SubAssign<FloatType> for ItemValuePair {
     }
 }
 
+impl fmt::Debug for ItemValuePair {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ItemValuePair")
+            .field("item", &self.item.name)
+            .field("value", &self.value)
+            .finish()
+    }
+}
+
 impl fmt::Display for ItemValuePair {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.item, self.value)
+        write!(f, "{}\n{} / min", self.item, round(self.value, 3))
     }
 }

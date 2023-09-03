@@ -21,9 +21,9 @@ struct Args {
     #[arg()]
     plan: PathBuf,
 
-    /// Print out the intermediary scored graph instead
-    #[arg(short = 's', long = "scored-graph")]
-    scored_graph: bool,
+    /// Print out the intermediary full plan graph instead
+    #[arg(short = 'f', long = "full-plan-graph")]
+    full_plan_graph: bool,
 }
 
 fn main() {
@@ -43,11 +43,11 @@ fn main() {
         panic!("Failed to load plan {}: {}", args.plan.display(), e);
     });
 
-    if args.scored_graph {
-        let mut graph = crate::plan::ScoredGraph::new(&plan);
-        graph.build();
-
-        print_graph(&graph.graph);
+    if args.full_plan_graph {
+        let graph = crate::plan::build_full_plan(&plan).unwrap_or_else(|e| {
+            panic!("Failed to build full plan graph {}: {}", args.plan.display(), e);
+        });
+        print_graph(&graph);
     } else {
         let graph = solve(&plan).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);
