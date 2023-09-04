@@ -1,11 +1,11 @@
+use super::{item_value_pair::ItemAmount, Building, Item, ItemValuePair};
+use crate::utils::FloatType;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
     hash::{Hash, Hasher},
     rc::Rc,
 };
-use crate::utils::FloatType;
-use super::{Building, Item, ItemValuePair, item_value_pair::ItemAmount};
 
 #[derive(Debug, Default, Copy, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RecipePower {

@@ -1,14 +1,14 @@
 use core::panic;
+use serde::{Deserialize, Serialize};
 use std::{
     fmt,
     hash::{Hash, Hasher},
     rc::Rc,
 };
-use serde::{Deserialize, Serialize};
 
 use crate::utils::FloatType;
 
-use super::{Item, ItemValuePair, Recipe, item_value_pair::ItemAmount};
+use super::{item_value_pair::ItemAmount, Item, ItemValuePair, Recipe};
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]

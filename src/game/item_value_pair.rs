@@ -1,5 +1,5 @@
-use ::serde::{Serialize, Deserialize};
 use crate::utils::{clamp_to_zero, round, FloatType, EPSILON};
+use ::serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt;
 use std::ops::{Add, AddAssign, Neg, Sub, SubAssign};
@@ -10,7 +10,7 @@ use super::Item;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ItemAmount {
     pub item: String,
-    pub amount: FloatType
+    pub amount: FloatType,
 }
 
 #[derive(Clone, PartialEq)]

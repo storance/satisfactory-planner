@@ -23,11 +23,6 @@ where
     fn is_output(&self) -> bool;
     fn is_by_product(&self) -> bool;
     fn is_production(&self) -> bool;
-
-    /*fn is_input_for_item(&self, item: &Item) -> bool;
-    fn is_output_for_item(&self, item: &Item) -> bool;
-    fn is_by_product_for_item(&self, item: &Item) -> bool;
-    fn is_production_for_recipe(&self, recipe: &Recipe) -> bool;*/
 }
 
 pub fn print_graph<N: NodeWeight, E: fmt::Display>(graph: &StableDiGraph<N, E>) {
