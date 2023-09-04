@@ -254,6 +254,14 @@ impl PlanConfig {
     pub fn find_input(&self, item: &Rc<Item>) -> FloatType {
         self.inputs.get(item).copied().unwrap_or(0.0)
     }
+
+    pub fn find_output(&self, item: &Item) -> FloatType {
+        self.outputs
+            .iter()
+            .find(|o| o.item.as_ref() == item)
+            .map(|o| o.value)
+            .unwrap_or(0.0)
+    }
 }
 
 #[cfg(test)]

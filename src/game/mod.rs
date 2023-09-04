@@ -288,11 +288,23 @@ impl GameDatabase {
 
     #[inline]
     pub fn find_recipes_by_output(&self, item: &Item) -> Vec<Rc<Recipe>> {
-        self.recipes
+        if self
+            .by_product_blacklist
             .iter()
-            .filter(|r| r.has_output_item(item))
-            .cloned()
-            .collect()
+            .any(|i| i.as_ref().eq(item))
+        {
+            self.recipes
+                .iter()
+                .filter(|r| r.is_primary_output(item))
+                .cloned()
+                .collect()
+        } else {
+            self.recipes
+                .iter()
+                .filter(|r| r.has_output_item(item))
+                .cloned()
+                .collect()
+        }
     }
 
     pub fn get_resource_limit(&self, item: &Rc<Item>) -> FloatType {
