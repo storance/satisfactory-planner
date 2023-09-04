@@ -3,7 +3,7 @@ use super::{
     NodeWeight,
 };
 use crate::{
-    game::{Item, ItemValuePair, Recipe},
+    game::{Item, ItemPerMinute, Recipe},
     utils::{clamp_to_zero, is_zero, round, FloatType},
 };
 use good_lp::{Solution, Variable};
@@ -14,30 +14,30 @@ use petgraph::{
 };
 use std::{collections::HashMap, fmt, rc::Rc};
 
-pub type SolvedGraph = StableDiGraph<SolvedNodeWeight, ItemValuePair>;
+pub type SolvedGraph = StableDiGraph<SolvedNodeWeight, ItemPerMinute>;
 
 #[derive(Debug, Clone)]
 pub enum SolvedNodeWeight {
-    Input(ItemValuePair),
-    Output(ItemValuePair),
-    ByProduct(ItemValuePair),
+    Input(ItemPerMinute),
+    Output(ItemPerMinute),
+    ByProduct(ItemPerMinute),
     Production(Rc<Recipe>, FloatType),
 }
 
 impl SolvedNodeWeight {
     #[inline]
     pub fn new_input(item: Rc<Item>, amount: FloatType) -> Self {
-        Self::Input(ItemValuePair::new(item, amount))
+        Self::Input(ItemPerMinute::new(item, amount))
     }
 
     #[inline]
     pub fn new_output(item: Rc<Item>, amount: FloatType) -> Self {
-        Self::Output(ItemValuePair::new(item, amount))
+        Self::Output(ItemPerMinute::new(item, amount))
     }
 
     #[inline]
     pub fn new_by_product(item: Rc<Item>, amount: FloatType) -> Self {
-        Self::ByProduct(ItemValuePair::new(item, amount))
+        Self::ByProduct(ItemPerMinute::new(item, amount))
     }
 
     #[inline]
@@ -77,7 +77,7 @@ impl fmt::Display for SolvedNodeWeight {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Input(input) => {
-                write!(f, "{}\n{} / min", input.item, round(input.value, 3))
+                write!(f, "{}\n{} / min", input.item, round(input.amount, 3))
             }
             Self::Production(recipe, building_count) => {
                 write!(
@@ -93,11 +93,11 @@ impl fmt::Display for SolvedNodeWeight {
                     f,
                     "{}\n{} / min",
                     by_product.item,
-                    round(by_product.value, 3)
+                    round(by_product.amount, 3)
                 )
             }
             Self::Output(output, ..) => {
-                write!(f, "{}\n{} / min", output.item, round(output.value, 3))
+                write!(f, "{}\n{} / min", output.item, round(output.amount, 3))
             }
         }
     }
@@ -151,7 +151,7 @@ pub fn copy_solution<S: Solution>(
         let new_source = *node_mapping.get(&source).unwrap();
         let new_target = *node_mapping.get(&target).unwrap();
 
-        let weight = ItemValuePair::new(Rc::clone(&full_graph[e]), solution);
+        let weight = ItemPerMinute::new(Rc::clone(&full_graph[e]), solution);
         solved_graph.add_edge(new_source, new_target, weight);
     }
 
@@ -171,11 +171,11 @@ fn cleanup_by_product_nodes(graph: &mut SolvedGraph) {
 }
 
 fn cleanup_by_product(graph: &mut SolvedGraph, node_idx: NodeIndex) {
-    let mut parents: Vec<(NodeIndex, ItemValuePair)> = graph
+    let mut parents: Vec<(NodeIndex, ItemPerMinute)> = graph
         .edges_directed(node_idx, Outgoing)
         .map(|e| (e.target(), e.weight().clone()))
         .collect();
-    let mut children: Vec<(NodeIndex, ItemValuePair)> = graph
+    let mut children: Vec<(NodeIndex, ItemPerMinute)> = graph
         .edges_directed(node_idx, Incoming)
         .map(|e| (e.source(), e.weight().clone()))
         .collect();
@@ -198,12 +198,12 @@ fn cleanup_by_product(graph: &mut SolvedGraph, node_idx: NodeIndex) {
 
             if remaining_output > current_child.1 {
                 graph.add_edge(current_child.0, parent.0, current_child.1.clone());
-                remaining_output -= current_child.1.value;
-                current_child.1.value = 0.0;
+                remaining_output -= current_child.1.amount;
+                current_child.1.amount = 0.0;
             } else {
                 graph.add_edge(current_child.0, parent.0, remaining_output.clone());
-                current_child.1 -= remaining_output.value;
-                remaining_output.value = 0.0;
+                current_child.1 -= remaining_output.amount;
+                remaining_output.amount = 0.0;
                 break;
             }
         }
@@ -211,11 +211,11 @@ fn cleanup_by_product(graph: &mut SolvedGraph, node_idx: NodeIndex) {
     }
 
     let remaining_output = clamp_to_zero(
-        current_child.1.value + children.iter().map(|c| c.1.value).sum::<FloatType>(),
+        current_child.1.amount + children.iter().map(|c| c.1.amount).sum::<FloatType>(),
     );
     if remaining_output > 0.0 {
         match &mut graph[node_idx] {
-            SolvedNodeWeight::ByProduct(by_product) => by_product.value = remaining_output,
+            SolvedNodeWeight::ByProduct(by_product) => by_product.amount = remaining_output,
             _ => panic!("Node is not a ByProduct"),
         };
 

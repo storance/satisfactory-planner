@@ -116,14 +116,14 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
                     let edge_var = edge_variables.get(&edge.id()).unwrap();
                     let recipe_output = recipe.find_output_by_item(edge.weight()).unwrap();
 
-                    problem = problem.with((var * recipe_output.value).eq(edge_var));
+                    problem = problem.with((var * recipe_output.amount).eq(edge_var));
                 }
 
                 for edge in full_graph.edges_directed(i, Incoming) {
                     let edge_var = edge_variables.get(&edge.id()).unwrap();
                     let recipe_input = recipe.find_input_by_item(edge.weight()).unwrap();
 
-                    problem = problem.with((var * recipe_input.value).eq(edge_var));
+                    problem = problem.with((var * recipe_input.amount).eq(edge_var));
                 }
             }
         }
@@ -144,7 +144,7 @@ mod tests {
     use std::rc::Rc;
 
     use crate::{
-        game::{test::get_test_game_db_with_recipes, ItemValuePair},
+        game::{test::get_test_game_db_with_recipes, ItemPerMinute},
         plan::solved_graph::SolvedNodeWeight,
         utils::{FloatType, EPSILON},
     };
@@ -161,7 +161,7 @@ mod tests {
         let iron_ingot_recipe = game_db.find_recipe("Recipe_IngotIron_C").unwrap();
 
         let config = PlanConfig::new(
-            vec![ItemValuePair::new(Rc::clone(&iron_ingot), 30.0)],
+            vec![ItemPerMinute::new(Rc::clone(&iron_ingot), 30.0)],
             game_db.clone(),
         );
 
@@ -178,12 +178,12 @@ mod tests {
         expected_graph.add_edge(
             smelter_idx,
             output_idx,
-            ItemValuePair::new(Rc::clone(&iron_ingot), 30.0),
+            ItemPerMinute::new(Rc::clone(&iron_ingot), 30.0),
         );
         expected_graph.add_edge(
             input_idx,
             smelter_idx,
-            ItemValuePair::new(Rc::clone(&iron_ore), 30.0),
+            ItemPerMinute::new(Rc::clone(&iron_ore), 30.0),
         );
         let result = solve(&config);
 
@@ -207,7 +207,7 @@ mod tests {
             .unwrap();
 
         let config = PlanConfig::new(
-            vec![ItemValuePair::new(Rc::clone(&iron_ingot), 65.0)],
+            vec![ItemPerMinute::new(Rc::clone(&iron_ingot), 65.0)],
             game_db,
         );
 
@@ -227,17 +227,17 @@ mod tests {
         expected_graph.add_edge(
             refinery_idx,
             output_idx,
-            ItemValuePair::new(Rc::clone(&iron_ingot), 65.0),
+            ItemPerMinute::new(Rc::clone(&iron_ingot), 65.0),
         );
         expected_graph.add_edge(
             ore_input_idx,
             refinery_idx,
-            ItemValuePair::new(Rc::clone(&iron_ore), 35.0),
+            ItemPerMinute::new(Rc::clone(&iron_ore), 35.0),
         );
         expected_graph.add_edge(
             water_input_idx,
             refinery_idx,
-            ItemValuePair::new(Rc::clone(&water), 20.0),
+            ItemPerMinute::new(Rc::clone(&water), 20.0),
         );
         let result = solve(&config);
 
@@ -264,8 +264,8 @@ mod tests {
 
         let config = PlanConfig::new(
             vec![
-                ItemValuePair::new(Rc::clone(&iron_rod), 30.0),
-                ItemValuePair::new(Rc::clone(&iron_plate), 60.0),
+                ItemPerMinute::new(Rc::clone(&iron_rod), 30.0),
+                ItemPerMinute::new(Rc::clone(&iron_plate), 60.0),
             ],
             game_db,
         );
@@ -294,30 +294,30 @@ mod tests {
         expected_graph.add_edge(
             plate_prod_idx,
             plate_output_idx,
-            ItemValuePair::new(Rc::clone(&iron_plate), 60.0),
+            ItemPerMinute::new(Rc::clone(&iron_plate), 60.0),
         );
 
         expected_graph.add_edge(
             rod_prod_idx,
             rod_output_idx,
-            ItemValuePair::new(Rc::clone(&iron_rod), 30.0),
+            ItemPerMinute::new(Rc::clone(&iron_rod), 30.0),
         );
 
         expected_graph.add_edge(
             smelter_idx,
             rod_prod_idx,
-            ItemValuePair::new(Rc::clone(&iron_ingot), 30.0),
+            ItemPerMinute::new(Rc::clone(&iron_ingot), 30.0),
         );
 
         expected_graph.add_edge(
             smelter_idx,
             plate_prod_idx,
-            ItemValuePair::new(Rc::clone(&iron_ingot), 90.0),
+            ItemPerMinute::new(Rc::clone(&iron_ingot), 90.0),
         );
         expected_graph.add_edge(
             input_idx,
             smelter_idx,
-            ItemValuePair::new(Rc::clone(&iron_ore), 120.0),
+            ItemPerMinute::new(Rc::clone(&iron_ore), 120.0),
         );
         let result = solve(&config);
 
@@ -361,7 +361,7 @@ mod tests {
 
         let config = PlanConfig::with_inputs(
             input_limits,
-            vec![ItemValuePair::new(Rc::clone(&wire), 232.5)],
+            vec![ItemPerMinute::new(Rc::clone(&wire), 232.5)],
             game_db,
         );
 
@@ -411,61 +411,61 @@ mod tests {
         expected_graph.add_edge(
             cat_wire_idx,
             output_idx,
-            ItemValuePair::new(Rc::clone(&wire), 120.0),
+            ItemPerMinute::new(Rc::clone(&wire), 120.0),
         );
 
         expected_graph.add_edge(
             fused_wire_idx,
             output_idx,
-            ItemValuePair::new(Rc::clone(&wire), 90.0),
+            ItemPerMinute::new(Rc::clone(&wire), 90.0),
         );
 
         expected_graph.add_edge(
             iron_wire_idx,
             output_idx,
-            ItemValuePair::new(Rc::clone(&wire), 22.5),
+            ItemPerMinute::new(Rc::clone(&wire), 22.5),
         );
 
         expected_graph.add_edge(
             cat_ingot_idx,
             cat_wire_idx,
-            ItemValuePair::new(Rc::clone(&caterium_ingot), 15.0),
+            ItemPerMinute::new(Rc::clone(&caterium_ingot), 15.0),
         );
 
         expected_graph.add_edge(
             cat_ingot_idx,
             fused_wire_idx,
-            ItemValuePair::new(Rc::clone(&caterium_ingot), 3.0),
+            ItemPerMinute::new(Rc::clone(&caterium_ingot), 3.0),
         );
 
         expected_graph.add_edge(
             copper_ingot_idx,
             fused_wire_idx,
-            ItemValuePair::new(Rc::clone(&copper_ingot), 12.0),
+            ItemPerMinute::new(Rc::clone(&copper_ingot), 12.0),
         );
 
         expected_graph.add_edge(
             iron_ingot_idx,
             iron_wire_idx,
-            ItemValuePair::new(Rc::clone(&iron_ingot), 12.5),
+            ItemPerMinute::new(Rc::clone(&iron_ingot), 12.5),
         );
 
         expected_graph.add_edge(
             iron_ore_idx,
             iron_ingot_idx,
-            ItemValuePair::new(Rc::clone(&iron_ore), 12.5),
+            ItemPerMinute::new(Rc::clone(&iron_ore), 12.5),
         );
 
         expected_graph.add_edge(
             copper_ore_idx,
             copper_ingot_idx,
-            ItemValuePair::new(Rc::clone(&copper_ore), 12.0),
+            ItemPerMinute::new(Rc::clone(&copper_ore), 12.0),
         );
 
         expected_graph.add_edge(
             cat_ore_idx,
             cat_ingot_idx,
-            ItemValuePair::new(Rc::clone(&caterium_ore), 54.0),
+            ItemPerMinute::new(Rc::clone(&caterium_ore), 54.0),
         );
 
         let result = solve(&config);
@@ -497,8 +497,8 @@ mod tests {
 
         let config = PlanConfig::new(
             vec![
-                ItemValuePair::new(Rc::clone(&fuel), 180.0),
-                ItemValuePair::new(Rc::clone(&plastic), 30.0),
+                ItemPerMinute::new(Rc::clone(&fuel), 180.0),
+                ItemPerMinute::new(Rc::clone(&plastic), 30.0),
             ],
             game_db,
         );
@@ -538,43 +538,43 @@ mod tests {
         expected_graph.add_edge(
             fuel_idx,
             fuel_output_idx,
-            ItemValuePair::new(Rc::clone(&fuel), 180.0),
+            ItemPerMinute::new(Rc::clone(&fuel), 180.0),
         );
 
         expected_graph.add_edge(
             hor_idx,
             fuel_idx,
-            ItemValuePair::new(Rc::clone(&heavy_oil_residue), 270.0),
+            ItemPerMinute::new(Rc::clone(&heavy_oil_residue), 270.0),
         );
 
         expected_graph.add_edge(
             hor_idx,
             resin_by_prod_idx,
-            ItemValuePair::new(Rc::clone(&polymer_resin), 45.0),
+            ItemPerMinute::new(Rc::clone(&polymer_resin), 45.0),
         );
 
         expected_graph.add_edge(
             hor_idx,
             plastic_idx,
-            ItemValuePair::new(Rc::clone(&polymer_resin), 90.0),
+            ItemPerMinute::new(Rc::clone(&polymer_resin), 90.0),
         );
 
         expected_graph.add_edge(
             water_idx,
             plastic_idx,
-            ItemValuePair::new(Rc::clone(&water), 30.0),
+            ItemPerMinute::new(Rc::clone(&water), 30.0),
         );
 
         expected_graph.add_edge(
             plastic_idx,
             plastic_output_idx,
-            ItemValuePair::new(Rc::clone(&plastic), 30.0),
+            ItemPerMinute::new(Rc::clone(&plastic), 30.0),
         );
 
         expected_graph.add_edge(
             oil_input_idx,
             hor_idx,
-            ItemValuePair::new(Rc::clone(&oil), 202.5),
+            ItemPerMinute::new(Rc::clone(&oil), 202.5),
         );
 
         let result = solve(&config).unwrap_or_else(|e| {
@@ -619,8 +619,8 @@ mod tests {
 
         let config = PlanConfig::new(
             vec![
-                ItemValuePair::new(Rc::clone(&fuel), 120.0),
-                ItemValuePair::new(Rc::clone(&packaged_fuel), 20.0),
+                ItemPerMinute::new(Rc::clone(&fuel), 120.0),
+                ItemPerMinute::new(Rc::clone(&packaged_fuel), 20.0),
             ],
             game_db,
         );
@@ -677,79 +677,79 @@ mod tests {
         expected_graph.add_edge(
             unpackage_fuel_idx,
             fuel_output_idx,
-            ItemValuePair::new(Rc::clone(&fuel), 120.0),
+            ItemPerMinute::new(Rc::clone(&fuel), 120.0),
         );
 
         expected_graph.add_edge(
             diluted_fuel_idx,
             packaged_fuel_output_idx,
-            ItemValuePair::new(Rc::clone(&packaged_fuel), 20.0),
+            ItemPerMinute::new(Rc::clone(&packaged_fuel), 20.0),
         );
 
         expected_graph.add_edge(
             diluted_fuel_idx,
             unpackage_fuel_idx,
-            ItemValuePair::new(Rc::clone(&packaged_fuel), 120.0),
+            ItemPerMinute::new(Rc::clone(&packaged_fuel), 120.0),
         );
 
         expected_graph.add_edge(
             unpackage_fuel_idx,
             packaged_water_idx,
-            ItemValuePair::new(Rc::clone(&empty_canister), 120.0),
+            ItemPerMinute::new(Rc::clone(&empty_canister), 120.0),
         );
 
         expected_graph.add_edge(
             packaged_water_idx,
             diluted_fuel_idx,
-            ItemValuePair::new(Rc::clone(&packaged_water), 140.0),
+            ItemPerMinute::new(Rc::clone(&packaged_water), 140.0),
         );
 
         expected_graph.add_edge(
             hor_idx,
             diluted_fuel_idx,
-            ItemValuePair::new(Rc::clone(&heavy_oil_residue), 70.0),
+            ItemPerMinute::new(Rc::clone(&heavy_oil_residue), 70.0),
         );
 
         expected_graph.add_edge(
             empty_canister_idx,
             packaged_water_idx,
-            ItemValuePair::new(Rc::clone(&empty_canister), 20.0),
+            ItemPerMinute::new(Rc::clone(&empty_canister), 20.0),
         );
 
         expected_graph.add_edge(
             water_idx,
             packaged_water_idx,
-            ItemValuePair::new(Rc::clone(&water), 140.0),
+            ItemPerMinute::new(Rc::clone(&water), 140.0),
         );
 
         expected_graph.add_edge(
             plastic_idx,
             empty_canister_idx,
-            ItemValuePair::new(Rc::clone(&plastic), 10.0),
+            ItemPerMinute::new(Rc::clone(&plastic), 10.0),
         );
 
         expected_graph.add_edge(
             hor_idx,
             plastic_idx,
-            ItemValuePair::new(Rc::clone(&polymer_resin), 30.0),
+            ItemPerMinute::new(Rc::clone(&polymer_resin), 30.0),
         );
 
         expected_graph.add_edge(
             water_idx,
             plastic_idx,
-            ItemValuePair::new(Rc::clone(&water), 10.0),
+            ItemPerMinute::new(Rc::clone(&water), 10.0),
         );
 
         expected_graph.add_edge(
             hor_idx,
             resin_by_prod_idx,
-            ItemValuePair::new(Rc::clone(&polymer_resin), 5.0),
+            ItemPerMinute::new(Rc::clone(&polymer_resin), 5.0),
         );
 
         expected_graph.add_edge(
             oil_input_idx,
             hor_idx,
-            ItemValuePair::new(Rc::clone(&oil), 52.5),
+            ItemPerMinute::new(Rc::clone(&oil), 52.5),
         );
 
         let result = solve(&config).unwrap_or_else(|e| {
@@ -794,8 +794,8 @@ mod tests {
                 "Mismatched weight for the edge connecting {} to {}. Expected: {}, actual: {}",
                 format_node(&expected[edge.source()]),
                 format_node(&expected[edge.target()]),
-                edge.weight().value,
-                actual[actual_edge].value
+                edge.weight().amount,
+                actual[actual_edge].amount
             );
         }
 
@@ -822,8 +822,8 @@ mod tests {
         }
     }
 
-    fn item_value_pair_equals(a: &ItemValuePair, b: &ItemValuePair) -> bool {
-        a.item == b.item && float_equals(a.value, b.value)
+    fn item_value_pair_equals(a: &ItemPerMinute, b: &ItemPerMinute) -> bool {
+        a.item == b.item && float_equals(a.amount, b.amount)
     }
 
     fn float_equals(a: FloatType, b: FloatType) -> bool {
@@ -832,10 +832,12 @@ mod tests {
 
     fn format_node(node: &SolvedNodeWeight) -> String {
         match node {
-            SolvedNodeWeight::Input(input) => format!("Input({}:{})", input.item, input.value),
-            SolvedNodeWeight::Output(output) => format!("Output({}:{})", output.item, output.value),
+            SolvedNodeWeight::Input(input) => format!("Input({}:{})", input.item, input.amount),
+            SolvedNodeWeight::Output(output) => {
+                format!("Output({}:{})", output.item, output.amount)
+            }
             SolvedNodeWeight::ByProduct(output) => {
-                format!("ByProduct({}:{})", output.item, output.value)
+                format!("ByProduct({}:{})", output.item, output.amount)
             }
             SolvedNodeWeight::Production(recipe, building_count) => {
                 format!("Production({}, {})", recipe.name, building_count)

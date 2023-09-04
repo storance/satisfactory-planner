@@ -20,24 +20,28 @@ pub struct Item {
     pub name: String,
     pub resource: bool,
     pub state: ItemState,
+    pub energy_mj: u32,
     pub sink_points: u32,
-    pub bit_mask: Option<u16>,
 }
 
 #[allow(dead_code)]
 impl ItemState {
+    #[inline]
     pub fn is_fluid(&self) -> bool {
         !matches!(self, Self::Solid)
     }
 
+    #[inline]
     pub fn is_solid(&self) -> bool {
         matches!(self, Self::Solid)
     }
 
+    #[inline]
     pub fn is_liquid(&self) -> bool {
         matches!(self, Self::Liquid)
     }
 
+    #[inline]
     pub fn is_gas(&self) -> bool {
         matches!(self, Self::Gas)
     }

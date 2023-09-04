@@ -10,10 +10,17 @@ use thiserror::Error;
 
 pub use building::{Building, Dimensions, PowerConsumption};
 pub use item::{Item, ItemState};
-pub use item_value_pair::ItemValuePair;
+pub use item_value_pair::ItemPerMinute;
 pub use recipe::Recipe;
 
 use crate::utils::FloatType;
+
+use self::{
+    building::{
+        BuildingDefinition, Fuel, ItemProducer, PowerGenerator, ResourceExtractor, ResourceWell,
+    },
+    item_value_pair::ItemAmountDefinition,
+};
 
 #[derive(Error, Debug, Eq, PartialEq)]
 pub enum GameDatabaseError {
@@ -29,13 +36,15 @@ pub enum GameDatabaseError {
     UnknownItemKey(String),
     #[error("Building `{0}`: No such building exists.")]
     UnknownBuildingKey(String),
+    #[error("Recipe `{0}: Building `{1}` is not a manufacturer.")]
+    NotAManufacturer(String, String),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct GameDatabaseDefinition {
     by_product_blacklist: Vec<String>,
     items: Vec<Rc<Item>>,
-    buildings: Vec<Rc<Building>>,
+    buildings: Vec<BuildingDefinition>,
     recipes: Vec<RecipeDefinition>,
     resource_limits: HashMap<String, FloatType>,
 }
@@ -77,69 +86,166 @@ impl GameDatabase {
             resource_limits.insert(item, *limit);
         }
 
+        let mut buildings = Vec::new();
+        for building_definition in definition.buildings {
+            buildings.push(Self::convert_building(
+                building_definition,
+                &definition.items,
+            )?);
+        }
+
         let mut recipes = Vec::with_capacity(definition.recipes.len());
-        for recipe_definition in definition.recipes {
-            let building =
-                Self::find_building_in_slice(&recipe_definition.building, &definition.buildings)?;
-
-            if recipe_definition.inputs.is_empty() {
-                return Err(GameDatabaseError::MissingRecipeInputs(
-                    recipe_definition.key.clone(),
-                ));
+        for recipe in definition.recipes {
+            if recipes.iter().any(|r: &Rc<Recipe>| r.key == recipe.key) {
+                return Err(GameDatabaseError::DuplicateRecipeKey(recipe.key.clone()));
             }
 
-            if recipe_definition.outputs.is_empty() {
-                return Err(GameDatabaseError::MissingRecipeOutputs(
-                    recipe_definition.key.clone(),
-                ));
-            }
-
-            if recipes
-                .iter()
-                .any(|r: &Rc<Recipe>| r.key == recipe_definition.key)
-            {
-                return Err(GameDatabaseError::DuplicateRecipeKey(
-                    recipe_definition.key.clone(),
-                ));
-            }
-
-            let crafts_per_minutes = 60.0 / recipe_definition.craft_time_secs;
-            let mut inputs = Vec::new();
-            for (item_key, amount) in &recipe_definition.inputs {
-                inputs.push(ItemValuePair::new(
-                    Self::find_item_by_key(item_key, &definition.items)?,
-                    *amount * crafts_per_minutes,
-                ));
-            }
-
-            let mut outputs = Vec::new();
-            for (item_key, amount) in &recipe_definition.outputs {
-                outputs.push(ItemValuePair::new(
-                    Self::find_item_by_key(item_key, &definition.items)?,
-                    *amount * crafts_per_minutes,
-                ));
-            }
-
-            recipes.push(Rc::new(Recipe {
-                key: recipe_definition.key,
-                name: recipe_definition.name,
-                alternate: recipe_definition.alternate,
-                outputs,
-                inputs,
-                craft_time_secs: recipe_definition.craft_time_secs,
-                events: recipe_definition.events,
-                building,
-                power: recipe_definition.power,
-            }));
+            recipes.push(Self::convert_recipe(recipe, &buildings, &definition.items)?);
         }
 
         Ok(Self {
             by_product_blacklist,
             items: definition.items,
-            buildings: definition.buildings,
+            buildings,
             recipes,
             resource_limits,
         })
+    }
+
+    fn convert_building(
+        building: BuildingDefinition,
+        items: &[Rc<Item>],
+    ) -> Result<Rc<Building>, GameDatabaseError> {
+        Ok(Rc::new(match building {
+            BuildingDefinition::Manufacturer(m) => Building::Manufacturer(m),
+            BuildingDefinition::PowerGenerator(pg) => {
+                let mut fuels = Vec::new();
+                for fuel in pg.fuels {
+                    let cycles_per_min = 60.0 / fuel.burn_time_secs;
+                    fuels.push(Fuel {
+                        fuel: Self::convert_item_amount(&fuel.fuel, cycles_per_min, items)?,
+                        supplemental: fuel
+                            .supplemental
+                            .map(|i| Self::convert_item_amount(&i, cycles_per_min, items))
+                            .transpose()?,
+                        by_product: fuel
+                            .by_product
+                            .map(|i| Self::convert_item_amount(&i, cycles_per_min, items))
+                            .transpose()?,
+                        burn_time_secs: fuel.burn_time_secs,
+                    });
+                }
+
+                Building::PowerGenerator(PowerGenerator {
+                    key: pg.key,
+                    name: pg.name,
+                    power_production_mw: pg.power_production_mw,
+                    fuels,
+                    dimensions: pg.dimensions,
+                })
+            }
+            BuildingDefinition::ResourceExtractor(re) => {
+                let mut allowed_resources = Vec::new();
+                for allowed_resource in re.allowed_resources {
+                    allowed_resources.push(Self::find_item_by_key(&allowed_resource, items)?);
+                }
+
+                Building::ResourceExtractor(ResourceExtractor {
+                    key: re.key,
+                    name: re.name,
+                    extraction_rate: re.extraction_rate,
+                    allowed_resources,
+                    extractor_type: re.extractor_type,
+                    power_consumption: re.power_consumption,
+                    dimensions: re.dimensions,
+                })
+            }
+            BuildingDefinition::ItemProducer(ip) => {
+                let crafts_per_min = 60.0 / ip.craft_time_secs;
+                Building::ItemProducer(ItemProducer {
+                    key: ip.key,
+                    name: ip.name,
+                    craft_time_secs: ip.craft_time_secs,
+                    output: Self::convert_item_amount(&ip.output, crafts_per_min, items)?,
+                    power_consumption: ip.power_consumption,
+                    dimensions: ip.dimensions,
+                })
+            }
+            BuildingDefinition::ResourceWell(rw) => {
+                let mut allowed_resources = Vec::new();
+                for allowed_resource in rw.allowed_resources {
+                    allowed_resources.push(Self::find_item_by_key(&allowed_resource, items)?);
+                }
+                Building::ResourceWell(ResourceWell {
+                    key: rw.key,
+                    name: rw.name,
+                    allowed_resources,
+                    satellite_buildings: rw.satellite_buildings,
+                    extractor_type: rw.extractor_type,
+                    power_consumption: rw.power_consumption,
+                    dimensions: rw.dimensions,
+                })
+            }
+        }))
+    }
+
+    fn convert_recipe(
+        recipe: RecipeDefinition,
+        buildings: &[Rc<Building>],
+        items: &[Rc<Item>],
+    ) -> Result<Rc<Recipe>, GameDatabaseError> {
+        let building = Self::find_building_in_slice(&recipe.building, buildings)?;
+
+        if !building.is_manufacturer() {
+            return Err(GameDatabaseError::NotAManufacturer(
+                recipe.name.clone(),
+                recipe.building.clone(),
+            ));
+        }
+
+        if recipe.inputs.is_empty() {
+            return Err(GameDatabaseError::MissingRecipeInputs(recipe.key.clone()));
+        }
+
+        if recipe.outputs.is_empty() {
+            return Err(GameDatabaseError::MissingRecipeOutputs(recipe.key.clone()));
+        }
+
+        let crafts_per_min = 60.0 / recipe.craft_time_secs;
+        let inputs = recipe
+            .inputs
+            .iter()
+            .map(|i| Self::convert_item_amount(i, crafts_per_min, items))
+            .collect::<Result<Vec<ItemPerMinute>, GameDatabaseError>>()?;
+
+        let outputs = recipe
+            .outputs
+            .iter()
+            .map(|o| Self::convert_item_amount(o, crafts_per_min, items))
+            .collect::<Result<Vec<ItemPerMinute>, GameDatabaseError>>()?;
+
+        Ok(Rc::new(Recipe {
+            key: recipe.key,
+            name: recipe.name,
+            alternate: recipe.alternate,
+            inputs,
+            outputs,
+            craft_time_secs: recipe.craft_time_secs,
+            events: recipe.events,
+            building,
+            power: recipe.power,
+        }))
+    }
+
+    pub fn convert_item_amount(
+        item_amount: &ItemAmountDefinition,
+        cycles_per_min: FloatType,
+        items: &[Rc<Item>],
+    ) -> Result<ItemPerMinute, GameDatabaseError> {
+        Ok(ItemPerMinute::new(
+            Self::find_item_by_key(&item_amount.item, items)?,
+            item_amount.amount * cycles_per_min,
+        ))
     }
 
     pub fn filter<F>(&self, predicate: F) -> Self
@@ -160,6 +266,7 @@ impl GameDatabase {
         }
     }
 
+    #[inline]
     pub fn find_recipe(&self, name_or_key: &str) -> Option<Rc<Recipe>> {
         self.recipes
             .iter()
@@ -167,6 +274,7 @@ impl GameDatabase {
             .cloned()
     }
 
+    #[inline]
     pub fn find_item(&self, name_or_key: &str) -> Option<Rc<Item>> {
         self.items
             .iter()
@@ -190,7 +298,7 @@ impl GameDatabase {
     ) -> Result<Rc<Building>, GameDatabaseError> {
         buildings
             .iter()
-            .find(|b| b.key == building_key)
+            .find(|b| b.key() == building_key)
             .cloned()
             .ok_or(GameDatabaseError::UnknownBuildingKey(building_key.into()))
     }
