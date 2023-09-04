@@ -30,7 +30,7 @@ pub struct Dimensions {
     pub height_m: FloatType,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Manufacturer {
     pub key: String,
     pub name: String,
@@ -140,7 +140,7 @@ pub struct ItemProducerDefinition {
     pub dimensions: Option<Dimensions>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ItemProducer {
     pub key: String,
     pub name: String,
@@ -172,6 +172,25 @@ pub enum Building {
     ResourceExtractor(ResourceExtractor),
     ItemProducer(ItemProducer),
     ResourceWell(ResourceWell),
+}
+
+impl fmt::Debug for Manufacturer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Manufacturer")
+            .field("key", &self.key)
+            .field("name", &self.name)
+            .finish()
+    }
+}
+
+impl fmt::Debug for ItemProducer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ItemProducer")
+            .field("key", &self.key)
+            .field("name", &self.name)
+            .field("output", &self.output)
+            .finish()
+    }
 }
 
 #[allow(dead_code)]

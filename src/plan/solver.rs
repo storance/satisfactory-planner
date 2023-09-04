@@ -6,7 +6,7 @@ use petgraph::{
 };
 use std::collections::HashMap;
 
-use crate::utils::FloatType;
+use crate::{game::Building, utils::FloatType};
 
 use super::{
     full_plan_graph::{build_full_plan, PlanNodeWeight},
@@ -126,6 +126,17 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
                     problem = problem.with((var * recipe_input.amount).eq(edge_var));
                 }
             }
+            PlanNodeWeight::Producer(building) => {
+                let mut edge_sum: Expression = 0.into();
+                for edge in full_graph.edges_directed(i, Outgoing) {
+                    let edge_var = edge_variables.get(&edge.id()).unwrap();
+                    edge_sum += edge_var;
+                }
+
+                if let Building::ItemProducer(ip) = building.as_ref() {
+                    problem = problem.with(edge_sum.eq(var * ip.output.amount));
+                }
+            }
         }
     }
 
@@ -141,7 +152,6 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
 #[cfg(test)]
 mod tests {
     use petgraph::visit::IntoEdgeReferences;
-    use std::rc::Rc;
 
     use super::*;
     use crate::{
@@ -229,6 +239,16 @@ mod tests {
                 $amount
             )
         };
+        (
+            @node($game_db:ident) Producer($building: literal, $building_count:expr)
+        ) => {
+            SolvedNodeWeight::new_producer(
+                $game_db.find_building($building).unwrap_or_else(||
+                    panic!("Building {} does not exist", $building)),
+                $building_count
+            )
+        };
+
     }
 
     #[test]
@@ -392,6 +412,53 @@ mod tests {
     }
 
     #[test]
+    fn test_fuel_and_plastic() {
+        let game_db = get_test_game_db_with_recipes(&[
+            "Recipe_Alternate_HeavyOilResidue_C",
+            "Recipe_ResidualFuel_C",
+            "Recipe_ResidualPlastic_C",
+        ]);
+
+        let expected_graph = graph_builder!(
+            Graph(game_db) {
+                nodes: [
+                    0 [Output("Desc_LiquidFuel_C", 180.0)],
+                    1 [Output("Desc_Plastic_C", 30.0)],
+                    2 [Production("Recipe_ResidualFuel_C", 4.5)],
+                    3 [Production("Recipe_ResidualPlastic_C", 1.5)],
+                    4 [Production("Recipe_Alternate_HeavyOilResidue_C", 6.75)],
+                    5 [ByProduct("Desc_PolymerResin_C", 45.0)],
+                    6 [Input("Desc_LiquidOil_C", 202.5)],
+                    7 [Input("Desc_Water_C", 30.0)]
+                ],
+                edges: [
+                    6 -> 4 ["Desc_LiquidOil_C", 202.5],
+                    4 -> 5 ["Desc_PolymerResin_C", 45.0],
+                    4 -> 2 ["Desc_HeavyOilResidue_C", 270.0],
+                    7 -> 3 ["Desc_Water_C", 30.0],
+                    4 -> 3 ["Desc_PolymerResin_C", 90.0],
+                    3 -> 1 ["Desc_Plastic_C", 30.0],
+                    2 -> 0 ["Desc_LiquidFuel_C", 180.0]
+                ]
+            }
+        );
+
+        let fuel = game_db.find_item("Desc_LiquidFuel_C").unwrap();
+        let plastic = game_db.find_item("Desc_Plastic_C").unwrap();
+        let config = PlanConfig::new(
+            vec![
+                ItemPerMinute::new(fuel, 180.0),
+                ItemPerMinute::new(plastic, 30.0),
+            ],
+            game_db,
+        );
+        let result = solve(&config).unwrap_or_else(|e| {
+            panic!("Failed to solve plan: {}", e);
+        });
+        assert_graphs_equal(result, expected_graph);
+    }
+
+    #[test]
     pub fn test_diluted_packaged_fuel() {
         let game_db = get_game_db_with_base_recipes_plus(&[
             "Recipe_Alternate_HeavyOilResidue_C",
@@ -435,8 +502,8 @@ mod tests {
         let packaged_fuel = game_db.find_item("Desc_Fuel_C").unwrap();
         let config = PlanConfig::new(
             vec![
-                ItemPerMinute::new(Rc::clone(&fuel), 120.0),
-                ItemPerMinute::new(Rc::clone(&packaged_fuel), 20.0),
+                ItemPerMinute::new(fuel, 120.0),
+                ItemPerMinute::new(packaged_fuel, 20.0),
             ],
             game_db,
         );
@@ -489,12 +556,66 @@ mod tests {
         let rubber = game_db.find_item("Desc_Rubber_C").unwrap();
         let config = PlanConfig::new(
             vec![
-                ItemPerMinute::new(Rc::clone(&rubber), 300.0),
-                ItemPerMinute::new(Rc::clone(&plastic), 300.0),
+                ItemPerMinute::new(rubber, 300.0),
+                ItemPerMinute::new(plastic, 300.0),
             ],
             game_db,
         );
 
+        let result = solve(&config).unwrap_or_else(|e| {
+            panic!("Failed to solve plan: {}", e);
+        });
+        assert_graphs_equal(result, expected_graph);
+    }
+
+    #[test]
+    fn test_ficsmas() {
+        let game_db = get_game_db_with_base_recipes_plus(&[
+            "Recipe_XmasBall1_C",
+            "Recipe_XmasBall2_C",
+            "Recipe_XmasBall3_C",
+            "Recipe_XmasBall4_C",
+        ]);
+
+        let expected_graph = graph_builder!(
+            Graph(game_db) {
+                nodes: [
+                    0 [Output("Desc_XmasBall3_C", 10.0)],
+                    1 [Output("Desc_XmasBall4_C", 10.0)],
+                    2 [Production("Recipe_XmasBall3_C", 2.0)],
+                    3 [Production("Recipe_XmasBall4_C", 2.0)],
+                    4 [Production("Recipe_XmasBall1_C", 4.0)],
+                    5 [Production("Recipe_XmasBall2_C", 3.0)],
+                    6 [Production("Recipe_IngotIron_C", 1.0)],
+                    7 [Production("Recipe_IngotCopper_C", 2.0 / 3.0)],
+                    8 [Producer("Desc_TreeGiftProducer_C", 7.0 / 3.0)],
+                    9 [Input("Desc_OreIron_C", 30.0)],
+                    10 [Input("Desc_OreCopper_C", 20.0)]
+                ],
+                edges: [
+                    8 -> 4 ["Desc_Gift_C", 20.0],
+                    8 -> 5 ["Desc_Gift_C", 15.0],
+                    9 -> 6 ["Desc_OreIron_C", 30.0],
+                    10 -> 7 ["Desc_OreCopper_C", 20.0],
+                    6 -> 3 ["Desc_IronIngot_C", 30.0],
+                    7 -> 2 ["Desc_CopperIngot_C", 20.0],
+                    5 -> 3 ["Desc_XmasBall2_C", 30.0],
+                    4 -> 2 ["Desc_XmasBall1_C", 20.0],
+                    3 -> 1 ["Desc_XmasBall4_C", 10.0],
+                    2 -> 0 ["Desc_XmasBall3_C", 10.0]
+                ]
+            }
+        );
+
+        let copper_ficsmas_ball = game_db.find_item("Desc_XmasBall3_C").unwrap();
+        let iron_ficsmas_ball = game_db.find_item("Desc_XmasBall4_C").unwrap();
+        let config = PlanConfig::new(
+            vec![
+                ItemPerMinute::new(iron_ficsmas_ball, 10.0),
+                ItemPerMinute::new(copper_ficsmas_ball, 10.0),
+            ],
+            game_db,
+        );
         let result = solve(&config).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);
         });
@@ -511,8 +632,9 @@ mod tests {
             {
                 Some(j) => node_mapping.insert(i, j),
                 None => panic!(
-                    "Expected node {:?} was not found in the actual graph {:?}",
-                    expected[i], actual
+                    "Expected node {:?} was not found in the actual graph {}",
+                    expected[i],
+                    format_nodes(&actual)
                 ),
             };
         }
@@ -560,6 +682,10 @@ mod tests {
                 SolvedNodeWeight::Production(a_recipe, a_building_count),
                 SolvedNodeWeight::Production(b_recipe, b_building_count),
             ) => a_recipe == b_recipe && float_equals(*a_building_count, *b_building_count),
+            (
+                SolvedNodeWeight::Producer(a_building, a_building_count),
+                SolvedNodeWeight::Producer(b_building, b_building_count),
+            ) => a_building == b_building && float_equals(*a_building_count, *b_building_count),
             _ => false,
         }
     }
@@ -570,5 +696,16 @@ mod tests {
 
     fn float_equals(a: FloatType, b: FloatType) -> bool {
         round(FloatType::abs(a - b), 3) < EPSILON
+    }
+
+    fn format_nodes(graph: &SolvedGraph) -> String {
+        format!(
+            "[{}]",
+            graph
+                .node_weights()
+                .map(|n| format!("{:?}", n))
+                .collect::<Vec<String>>()
+                .join(", ")
+        )
     }
 }
