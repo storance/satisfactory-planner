@@ -1288,7 +1288,11 @@
         }
       ],
       "power_production_mw": 30,
-      "dimensions": null
+      "dimensions": {
+        "width_m": 8,
+        "length_m": 8,
+        "height_m": 7
+      }
     },
     {
       "type": "manufacturer",
@@ -1345,7 +1349,11 @@
         }
       ],
       "power_production_mw": 75,
-      "dimensions": null
+      "dimensions": {
+        "width_m": 10,
+        "length_m": 26,
+        "height_m": 36
+      }
     },
     {
       "type": "manufacturer",
@@ -1376,7 +1384,11 @@
         "value_mw": 0,
         "exponent": 1.6
       },
-      "dimensions": null
+      "dimensions": {
+        "width_m": 8,
+        "length_m": 8,
+        "height_m": 18
+      }
     },
     {
       "type": "manufacturer",
@@ -1421,7 +1433,11 @@
         }
       ],
       "power_production_mw": 150,
-      "dimensions": null
+      "dimensions": {
+        "width_m": 20,
+        "length_m": 20,
+        "height_m": 27
+      }
     },
     {
       "type": "manufacturer",
@@ -1460,7 +1476,11 @@
         "value_mw": 5,
         "exponent": 1.321929
       },
-      "dimensions": null
+      "dimensions": {
+        "width_m": 6,
+        "length_m": 14,
+        "height_m": 18
+      }
     },
     {
       "type": "resource_extractor",
@@ -1484,7 +1504,11 @@
         "value_mw": 12,
         "exponent": 1.321929
       },
-      "dimensions": null
+      "dimensions": {
+        "width_m": 6,
+        "length_m": 14,
+        "height_m": 18
+      }
     },
     {
       "type": "resource_extractor",
@@ -1508,7 +1532,11 @@
         "value_mw": 30,
         "exponent": 1.321929
       },
-      "dimensions": null
+      "dimensions": {
+        "width_m": 6,
+        "length_m": 14,
+        "height_m": 18
+      }
     },
     {
       "type": "power_generator",
@@ -1547,7 +1575,11 @@
         }
       ],
       "power_production_mw": 2500,
-      "dimensions": null
+      "dimensions": {
+        "width_m": 36,
+        "length_m": 43,
+        "height_m": 49
+      }
     },
     {
       "type": "resource_extractor",
@@ -1563,7 +1595,11 @@
         "value_mw": 40,
         "exponent": 1.321929
       },
-      "dimensions": null
+      "dimensions": {
+        "width_m": 8,
+        "length_m": 14,
+        "height_m": 20
+      }
     },
     {
       "type": "manufacturer",
@@ -1631,7 +1667,11 @@
             "value_mw": 0,
             "exponent": 1.321929
           },
-          "dimensions": null
+          "dimensions": {
+            "width_m": 4,
+            "length_m": 4,
+            "height_m": 5
+          }
         }
       ],
       "power_consumption": {
@@ -1639,7 +1679,11 @@
         "value_mw": 150,
         "exponent": 1.321929
       },
-      "dimensions": null
+      "dimensions": {
+        "width_m": 20,
+        "length_m": 20,
+        "height_m": 23
+      }
     },
     {
       "type": "manufacturer",
@@ -1670,7 +1714,11 @@
         "value_mw": 20,
         "exponent": 1.321929
       },
-      "dimensions": null
+      "dimensions": {
+        "width_m": 20,
+        "length_m": 19.5,
+        "height_m": 26
+      }
     }
   ],
   "recipes": [

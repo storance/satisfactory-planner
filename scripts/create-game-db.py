@@ -120,6 +120,66 @@ BUILDING_SIZES = {
         'length_m': 38,
         'height_m':  32,
     },
+    'Desc_TreeGiftProducer_C': {
+        'width_m':  8,
+        'length_m': 8,
+        'height_m':  18,
+    },
+    'Desc_GeneratorBiomass_C': {
+        'width_m':  8,
+        'length_m': 8,
+        'height_m':  7,
+    },
+    'Desc_GeneratorCoal_C': {
+        'width_m':  10,
+        'length_m': 26,
+        'height_m': 36,
+    },
+    'Desc_GeneratorFuel_C': {
+        'width_m':  20,
+        'length_m': 20,
+        'height_m': 27,
+    },
+    'Desc_GeneratorNuclear_C': {
+        'width_m':  36,
+        'length_m': 43,
+        'height_m': 49,
+    },
+    'Desc_MinerMk1_C': {
+        'width_m':  6,
+        'length_m': 14,
+        'height_m': 18,
+    },
+    'Desc_MinerMk2_C': {
+        'width_m':  6,
+        'length_m': 14,
+        'height_m': 18,
+    },
+    'Desc_MinerMk3_C': {
+        'width_m':  6,
+        'length_m': 14,
+        'height_m': 18,
+    },
+    'Desc_OilPump_C': {
+        'width_m':  8,
+        'length_m': 14,
+        'height_m': 20,
+    },
+    'Desc_FrackingSmasher_C': {
+        'width_m':  20,
+        'length_m': 20,
+        'height_m': 23,
+    },
+    'Desc_FrackingExtractor_C': {
+        'width_m':  4,
+        'length_m': 4,
+        'height_m': 5,
+    },
+    'Desc_WaterPump_C': {
+        'width_m':  20,
+        'length_m': 19.5,
+        'height_m': 26,
+    },
 }
 
 ITEM_PRODUCER_OUTPUTS = {
