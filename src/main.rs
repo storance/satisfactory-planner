@@ -67,13 +67,13 @@ fn main() {
 
         for i in graph.node_indices() {
             if let SolvedNodeWeight::Production(recipe, building_count) = &graph[i] {
-                floor_area += recipe.building.floor_area() * building_count;
-                volume += recipe.building.volume() * building_count;
-                total_buildings += building_count;
-                power_usage += recipe.average_mw(100.0) * building_count;
+                floor_area += recipe.building.floor_area() * building_count.ceil();
+                volume += recipe.building.volume() * building_count.ceil();
+                total_buildings += building_count.ceil();
+                power_usage += recipe.average_mw(100.0) * building_count.floor();
 
-                //let last_clock_speed = building_count.fract() * 100.0;
-                //power_usage += recipe.average_mw(last_clock_speed);
+                let last_clock_speed = building_count.fract() * 100.0;
+                power_usage += recipe.average_mw(last_clock_speed);
             }
         }
 

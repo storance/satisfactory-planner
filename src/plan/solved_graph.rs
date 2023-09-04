@@ -113,7 +113,6 @@ pub fn copy_solution<S: Solution>(
 
     let mut solved_graph = SolvedGraph::new();
 
-    let mut total_complexity = 0.0;
     for i in full_graph.node_indices() {
         let var = *node_variables.get(&i).unwrap();
         let solution = solution.value(var);
@@ -132,19 +131,13 @@ pub fn copy_solution<S: Solution>(
             PlanNodeWeight::ByProduct(item) => {
                 solved_graph.add_node(SolvedNodeWeight::new_by_product(Rc::clone(item), solution))
             }
-            PlanNodeWeight::Production(recipe, c) => {
-                total_complexity += *c as FloatType * solution;
-                solved_graph.add_node(SolvedNodeWeight::new_production(
-                    Rc::clone(recipe),
-                    solution,
-                ))
-            }
+            PlanNodeWeight::Production(recipe, _) => solved_graph.add_node(
+                SolvedNodeWeight::new_production(Rc::clone(recipe), solution),
+            ),
         };
 
         node_mapping.insert(i, new_idx);
     }
-
-    println!("Total Complexity {}", total_complexity);
 
     for e in full_graph.edge_indices() {
         let var = *edge_variables.get(&e).unwrap();
