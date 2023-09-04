@@ -1,4 +1,4 @@
-use crate::game::{Item, Recipe};
+use crate::game::{Building, Item, Recipe};
 use anyhow::bail;
 use petgraph::{
     stable_graph::{NodeIndex, StableDiGraph},
@@ -15,7 +15,8 @@ pub enum PlanNodeWeight {
     Input(Rc<Item>),
     Output(Rc<Item>),
     ByProduct(Rc<Item>),
-    Production(Rc<Recipe>),
+    Production(Rc<Recipe>, u32),
+    Producer(Rc<Building>),
 }
 
 impl PlanNodeWeight {
@@ -36,7 +37,12 @@ impl PlanNodeWeight {
 
     #[inline]
     pub fn new_production(recipe: Rc<Recipe>) -> Self {
-        Self::Production(recipe)
+        Self::Production(recipe, 0)
+    }
+
+    #[inline]
+    pub fn new_producer(building: Rc<Building>) -> Self {
+        Self::Producer(building)
     }
 
     #[inline]
@@ -51,12 +57,23 @@ impl PlanNodeWeight {
 
     #[inline]
     pub fn is_by_product_for_item(&self, item: &Item) -> bool {
-        matches!(self, Self::ByProduct(i, ..) if i.as_ref() == item)
+        matches!(self, Self::ByProduct(i) if i.as_ref() == item)
+    }
+
+    #[inline]
+    pub fn is_producer_for_building(&self, building: &Building) -> bool {
+        matches!(self, Self::Producer(b) if b.as_ref() == building)
     }
 
     #[inline]
     pub fn is_production_for_recipe(&self, recipe: &Recipe) -> bool {
-        matches!(self, Self::Production(r) if **r == *recipe)
+        matches!(self, Self::Production(r, ..) if **r == *recipe)
+    }
+
+    pub fn set_complexity(&mut self, complexity: u32) {
+        if let Self::Production(_, c) = self {
+            *c = complexity
+        }
     }
 }
 
@@ -85,6 +102,10 @@ impl NodeWeight for PlanNodeWeight {
     fn is_production(&self) -> bool {
         matches!(self, Self::Production(..))
     }
+
+    fn is_producer(&self) -> bool {
+        matches!(self, Self::Producer(..))
+    }
 }
 
 impl fmt::Display for PlanNodeWeight {
@@ -93,7 +114,7 @@ impl fmt::Display for PlanNodeWeight {
             Self::Input(item) => {
                 write!(f, "{}", item)
             }
-            Self::Production(recipe) => {
+            Self::Production(recipe, ..) => {
                 write!(f, "{}\n{}", recipe, recipe.building)
             }
             Self::ByProduct(item, ..) => {
@@ -101,6 +122,9 @@ impl fmt::Display for PlanNodeWeight {
             }
             Self::Output(item) => {
                 write!(f, "{}", item)
+            }
+            Self::Producer(building) => {
+                write!(f, "{}", building.name())
             }
         }
     }
@@ -130,7 +154,7 @@ fn create_children(
     graph: &mut FullPlanGraph,
     parent_idx: NodeIndex,
     item: Rc<Item>,
-) {
+) -> u32 {
     if item.resource {
         create_input_node(graph, parent_idx, item)
     } else {
@@ -138,10 +162,11 @@ fn create_children(
     }
 }
 
-fn create_input_node(graph: &mut FullPlanGraph, parent_idx: NodeIndex, item: Rc<Item>) {
+fn create_input_node(graph: &mut FullPlanGraph, parent_idx: NodeIndex, item: Rc<Item>) -> u32 {
     let idx = find_input_node(graph, &item)
         .unwrap_or_else(|| graph.add_node(PlanNodeWeight::new_input(Rc::clone(&item))));
     graph.add_edge(idx, parent_idx, item);
+    0
 }
 
 pub fn create_production_by_product(
@@ -149,14 +174,31 @@ pub fn create_production_by_product(
     graph: &mut FullPlanGraph,
     parent_idx: NodeIndex,
     item: Rc<Item>,
-) {
+) -> u32 {
     let idx = match find_by_product_node(graph, &item) {
         Some(idx) => idx,
         None => graph.add_node(PlanNodeWeight::new_by_product(Rc::clone(&item))),
     };
 
+    let mut complexity = u32::MAX;
     for recipe in config.game_db.find_recipes_by_output(&item) {
-        create_production_node(config, graph, idx, recipe, Rc::clone(&item));
+        complexity = complexity.min(create_production_node(
+            config,
+            graph,
+            idx,
+            recipe,
+            Rc::clone(&item),
+        ));
+    }
+
+    for building in config.game_db.find_item_producers(&item) {
+        complexity = complexity.min(create_producer_node(
+            config,
+            graph,
+            parent_idx,
+            building,
+            Rc::clone(&item),
+        ));
     }
 
     if config.has_input(&item) {
@@ -164,6 +206,20 @@ pub fn create_production_by_product(
     }
 
     graph.update_edge(idx, parent_idx, item);
+    complexity
+}
+
+fn create_producer_node(
+    _config: &PlanConfig,
+    graph: &mut FullPlanGraph,
+    parent_idx: NodeIndex,
+    building: Rc<Building>,
+    item: Rc<Item>,
+) -> u32 {
+    let idx = find_producer_node(graph, &building)
+        .unwrap_or_else(|| graph.add_node(PlanNodeWeight::new_producer(building)));
+    graph.add_edge(idx, parent_idx, item);
+    1
 }
 
 fn create_production_node(
@@ -172,8 +228,14 @@ fn create_production_node(
     parent_idx: NodeIndex,
     recipe: Rc<Recipe>,
     item: Rc<Item>,
-) {
-    if find_production_node(graph, &recipe).is_none() {
+) -> u32 {
+    if let Some(existing_idx) = find_production_node(graph, &recipe) {
+        if let PlanNodeWeight::Production(_, complexity) = &graph[existing_idx] {
+            *complexity
+        } else {
+            0
+        }
+    } else {
         let idx = graph.add_node(PlanNodeWeight::new_production(Rc::clone(&recipe)));
 
         for output in &recipe.outputs {
@@ -182,10 +244,15 @@ fn create_production_node(
             }
         }
 
+        let mut complexity = 0;
         for input in &recipe.inputs {
-            create_children(config, graph, idx, Rc::clone(&input.item));
+            complexity =
+                complexity.max(create_children(config, graph, idx, Rc::clone(&input.item)));
         }
+        complexity += 1;
+        graph[idx].set_complexity(complexity);
         graph.add_edge(idx, parent_idx, item);
+        complexity
     }
 }
 
@@ -194,10 +261,11 @@ fn create_partial_by_product_node(
     child_idx: NodeIndex,
     item: Rc<Item>,
 ) -> NodeIndex {
-    let idx = graph.add_node(PlanNodeWeight::new_by_product(Rc::clone(&item)));
-
-    graph.add_edge(child_idx, idx, item);
-
+    let idx = match find_by_product_node(graph, &item) {
+        Some(idx) => idx,
+        None => graph.add_node(PlanNodeWeight::new_by_product(Rc::clone(&item))),
+    };
+    graph.update_edge(child_idx, idx, item);
     idx
 }
 
@@ -263,6 +331,7 @@ fn prune_impossible(
                 true
             }
         }
+        PlanNodeWeight::Producer(..) => false,
     }
 }
 
@@ -304,6 +373,13 @@ fn find_production_node(graph: &FullPlanGraph, recipe: &Recipe) -> Option<NodeIn
     graph
         .node_indices()
         .find(|i| graph[*i].is_production_for_recipe(recipe))
+}
+
+#[inline]
+fn find_producer_node(graph: &FullPlanGraph, building: &Building) -> Option<NodeIndex> {
+    graph
+        .node_indices()
+        .find(|i| graph[*i].is_producer_for_building(building))
 }
 
 #[inline]

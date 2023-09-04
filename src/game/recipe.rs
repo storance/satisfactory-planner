@@ -29,7 +29,7 @@ pub(super) struct RecipeDefinition {
     pub power: RecipePower,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Recipe {
     pub key: String,
     pub name: String,
@@ -88,6 +88,15 @@ impl Recipe {
     pub fn calc_buildings_for_input(&self, input: &ItemPerMinute) -> Option<FloatType> {
         self.find_input_by_item(&input.item)
             .map(|ri| input.ratio(ri))
+    }
+}
+
+impl fmt::Debug for Recipe {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Recipe")
+            .field("name", &self.name)
+            .field("building", &self.building.name())
+            .finish()
     }
 }
 

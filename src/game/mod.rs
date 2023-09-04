@@ -194,7 +194,7 @@ impl GameDatabase {
         buildings: &[Rc<Building>],
         items: &[Rc<Item>],
     ) -> Result<Rc<Recipe>, GameDatabaseError> {
-        let building = Self::find_building_in_slice(&recipe.building, buildings)?;
+        let building = Self::find_building_by_key(&recipe.building, buildings)?;
 
         if !building.is_manufacturer() {
             return Err(GameDatabaseError::NotAManufacturer(
@@ -248,6 +248,27 @@ impl GameDatabase {
         ))
     }
 
+    #[inline]
+    fn find_item_by_key(item_key: &str, items: &[Rc<Item>]) -> Result<Rc<Item>, GameDatabaseError> {
+        items
+            .iter()
+            .find(|i| i.key == item_key)
+            .cloned()
+            .ok_or(GameDatabaseError::UnknownItemKey(item_key.into()))
+    }
+
+    #[inline]
+    fn find_building_by_key(
+        building_key: &str,
+        buildings: &[Rc<Building>],
+    ) -> Result<Rc<Building>, GameDatabaseError> {
+        buildings
+            .iter()
+            .find(|b| b.key() == building_key)
+            .cloned()
+            .ok_or(GameDatabaseError::UnknownBuildingKey(building_key.into()))
+    }
+
     pub fn filter<F>(&self, predicate: F) -> Self
     where
         F: Fn(&Recipe) -> bool,
@@ -283,27 +304,13 @@ impl GameDatabase {
     }
 
     #[inline]
-    fn find_item_by_key(item_key: &str, items: &[Rc<Item>]) -> Result<Rc<Item>, GameDatabaseError> {
-        items
+    pub fn find_building(&self, name_or_key: &str) -> Option<Rc<Building>> {
+        self.buildings
             .iter()
-            .find(|i| i.key == item_key)
+            .find(|b| b.name().eq_ignore_ascii_case(name_or_key) || b.key() == name_or_key)
             .cloned()
-            .ok_or(GameDatabaseError::UnknownItemKey(item_key.into()))
     }
 
-    #[inline]
-    fn find_building_in_slice(
-        building_key: &str,
-        buildings: &[Rc<Building>],
-    ) -> Result<Rc<Building>, GameDatabaseError> {
-        buildings
-            .iter()
-            .find(|b| b.key() == building_key)
-            .cloned()
-            .ok_or(GameDatabaseError::UnknownBuildingKey(building_key.into()))
-    }
-
-    #[inline]
     pub fn find_recipes_by_output(&self, item: &Item) -> Vec<Rc<Recipe>> {
         if self
             .by_product_blacklist
@@ -324,6 +331,16 @@ impl GameDatabase {
         }
     }
 
+    #[inline]
+    pub fn find_item_producers(&self, item: &Item) -> Vec<Rc<Building>> {
+        self.buildings
+            .iter()
+            .filter(|b| b.is_item_producer() && *b.as_item_producer().output.item == *item)
+            .cloned()
+            .collect()
+    }
+
+    #[inline]
     pub fn get_resource_limit(&self, item: &Rc<Item>) -> FloatType {
         self.resource_limits.get(item).copied().unwrap_or(0.0)
     }
@@ -344,5 +361,9 @@ pub mod test {
 
     pub fn get_test_game_db_with_recipes(recipe_keys: &[&str]) -> GameDatabase {
         get_test_game_db().filter(|r| recipe_keys.contains(&r.key.as_str()))
+    }
+
+    pub fn get_game_db_with_base_recipes_plus(recipe_keys: &[&str]) -> GameDatabase {
+        get_test_game_db().filter(|r| !r.alternate || recipe_keys.contains(&r.key.as_str()))
     }
 }

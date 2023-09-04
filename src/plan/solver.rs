@@ -6,11 +6,15 @@ use petgraph::{
 };
 use std::collections::HashMap;
 
+use crate::{game::Building, utils::FloatType};
+
 use super::{
     full_plan_graph::{build_full_plan, PlanNodeWeight},
     solved_graph::{copy_solution, SolvedGraph},
     PlanConfig,
 };
+
+const RESOURCE_WEIGHT: FloatType = 10_000.0;
 
 pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
     let full_graph = build_full_plan(config)?;
@@ -20,7 +24,8 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
     let mut by_product_variables: HashMap<NodeIndex, Variable> = HashMap::new();
 
     let mut vars = variables!();
-    let mut min_expr: Expression = 0.into();
+    let mut resource_expr: Expression = 0.into();
+    let mut complexity_expr: Expression = 0.into();
 
     for i in full_graph.node_indices() {
         match &full_graph[i] {
@@ -28,7 +33,7 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
                 let var = vars.add(variable().min(0.0));
                 if item.resource {
                     let limit = config.game_db.get_resource_limit(item);
-                    min_expr += var / limit;
+                    resource_expr += var * 10_000.0 / limit;
                 }
 
                 node_variables.insert(i, var);
@@ -37,10 +42,13 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
                 let var = vars.add(variable().min(0.0));
                 let excess_var = vars.add(variable().min(0.0));
 
-                // TODO: do we want to try to minimize by products? Maybe make it an option?
-                //min_expr += excess_var;
                 node_variables.insert(i, var);
                 by_product_variables.insert(i, excess_var);
+            }
+            PlanNodeWeight::Production(_, complexity) => {
+                let var = vars.add(variable().min(0.0));
+                complexity_expr += var * *complexity;
+                node_variables.insert(i, var);
             }
             _ => {
                 node_variables.insert(i, vars.add(variable().min(0.0)));
@@ -52,7 +60,9 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
         edge_variables.insert(e, vars.add(variable().min(0.0)));
     }
 
-    let mut problem = vars.minimise(min_expr).using(minilp);
+    let mut problem = vars
+        .minimise((RESOURCE_WEIGHT * resource_expr) + complexity_expr)
+        .using(minilp);
 
     for i in full_graph.node_indices() {
         let var = *node_variables.get(&i).unwrap();
@@ -101,7 +111,7 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
                     .with(incoming_sum.eq(var))
                     .with(outgoing_sum.eq(var));
             }
-            PlanNodeWeight::Production(recipe) => {
+            PlanNodeWeight::Production(recipe, ..) => {
                 for edge in full_graph.edges_directed(i, Outgoing) {
                     let edge_var = edge_variables.get(&edge.id()).unwrap();
                     let recipe_output = recipe.find_output_by_item(edge.weight()).unwrap();
@@ -114,6 +124,17 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
                     let recipe_input = recipe.find_input_by_item(edge.weight()).unwrap();
 
                     problem = problem.with((var * recipe_input.amount).eq(edge_var));
+                }
+            }
+            PlanNodeWeight::Producer(building) => {
+                let mut edge_sum: Expression = 0.into();
+                for edge in full_graph.edges_directed(i, Outgoing) {
+                    let edge_var = edge_variables.get(&edge.id()).unwrap();
+                    edge_sum += edge_var;
+                }
+
+                if let Building::ItemProducer(ip) = building.as_ref() {
+                    problem = problem.with(edge_sum.eq(var * ip.output.amount));
                 }
             }
         }
@@ -131,54 +152,130 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
 #[cfg(test)]
 mod tests {
     use petgraph::visit::IntoEdgeReferences;
-    use std::rc::Rc;
-
-    use crate::{
-        game::{test::get_test_game_db_with_recipes, ItemPerMinute},
-        plan::solved_graph::SolvedNodeWeight,
-        utils::{FloatType, EPSILON},
-    };
 
     use super::*;
+    use crate::{
+        game::{
+            test::{get_game_db_with_base_recipes_plus, get_test_game_db_with_recipes},
+            ItemPerMinute,
+        },
+        plan::solved_graph::SolvedNodeWeight,
+        utils::{round, FloatType, EPSILON},
+    };
+
+    macro_rules! graph_builder {
+        (
+            Graph($game_db:ident) {
+                nodes: [
+                    $($id:literal [$node_type:ident($($node_args:tt)*)]),*
+                ],
+                edges: [
+                    $($source:literal -> $target:literal [$item:literal, $amount:expr]),*
+                ]
+            }
+        ) => {
+            {
+                let mut temp_graph = SolvedGraph::new();
+                let mut node_mappings: HashMap<u32, NodeIndex> = HashMap::new();
+
+                $(
+                    {
+                        let weight = graph_builder!(@node($game_db) $node_type($($node_args)*));
+                        if !node_mappings.insert($id, temp_graph.add_node(weight)).is_none() {
+                            panic!("Node id {} was used multiple times", $id);
+                        }
+                    }
+                )*
+
+                $(
+                    {
+                        let src_id = *node_mappings.get(&$source).unwrap_or_else(||
+                            panic!("Source Node {} does not exist", $source));
+                        let target_id = *node_mappings.get(&$target).unwrap_or_else(||
+                            panic!("Target Node {} does not exist", $target));
+                        let item = $game_db.find_item($item).unwrap_or_else(||
+                            panic!("Item {} does not exist", $item));
+
+                        temp_graph.add_edge(src_id, target_id, ItemPerMinute::new(item, $amount));
+                    }
+                )*
+
+                temp_graph
+            }
+        };
+        (
+            @node($game_db:ident) Production($recipe: literal, $building_count:expr)
+        ) => {
+            SolvedNodeWeight::new_production(
+                $game_db.find_recipe($recipe).unwrap_or_else(||
+                    panic!("Recipe {} does not exist", $recipe)),
+                $building_count
+            )
+        };
+        (
+            @node($game_db:ident) Input($item:literal, $amount:expr)
+        ) => {
+            SolvedNodeWeight::new_input(
+                $game_db.find_item($item).unwrap_or_else(||
+                    panic!("Item {} does not exist", $item)),
+                $amount
+            )
+        };
+        (
+            @node($game_db:ident) Output($item:literal, $amount:expr)
+        ) => {
+            SolvedNodeWeight::new_output(
+                $game_db.find_item($item).unwrap_or_else(||
+                    panic!("Item {} does not exist", $item)),
+                $amount
+            )
+        };
+        (
+            @node($game_db:ident) ByProduct($item:literal, $amount:expr)
+        ) => {
+            SolvedNodeWeight::new_by_product(
+                $game_db.find_item($item).unwrap_or_else(||
+                    panic!("Item {} does not exist", $item)),
+                $amount
+            )
+        };
+        (
+            @node($game_db:ident) Producer($building: literal, $building_count:expr)
+        ) => {
+            SolvedNodeWeight::new_producer(
+                $game_db.find_building($building).unwrap_or_else(||
+                    panic!("Building {} does not exist", $building)),
+                $building_count
+            )
+        };
+
+    }
 
     #[test]
     fn test_iron_ingot_base_recipes() {
         let game_db = get_test_game_db_with_recipes(&["Recipe_IngotIron_C"]);
 
-        let iron_ore = game_db.find_item("Desc_OreIron_C").unwrap();
+        let expected_graph = graph_builder!(
+            Graph(game_db) {
+                nodes: [
+                    0 [Output("Desc_IronIngot_C", 30.0)],
+                    1 [Production("Recipe_IngotIron_C", 1.0)],
+                    2 [Input("Desc_OreIron_C", 30.0)]
+                ],
+                edges: [
+                    2 -> 1 ["Desc_OreIron_C", 30.0],
+                    1 -> 0 ["Desc_IronIngot_C", 30.0]
+                ]
+            }
+        );
+
         let iron_ingot = game_db.find_item("Desc_IronIngot_C").unwrap();
+        let config = PlanConfig::new(vec![ItemPerMinute::new(iron_ingot, 30.0)], game_db);
 
-        let iron_ingot_recipe = game_db.find_recipe("Recipe_IngotIron_C").unwrap();
-
-        let config = PlanConfig::new(
-            vec![ItemPerMinute::new(Rc::clone(&iron_ingot), 30.0)],
-            game_db.clone(),
-        );
-
-        let mut expected_graph = SolvedGraph::new();
-        let output_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_output(Rc::clone(&iron_ingot), 30.0));
-        let smelter_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
-            Rc::clone(&iron_ingot_recipe),
-            1.0,
-        ));
-        let input_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&iron_ore), 30.0));
-
-        expected_graph.add_edge(
-            smelter_idx,
-            output_idx,
-            ItemPerMinute::new(Rc::clone(&iron_ingot), 30.0),
-        );
-        expected_graph.add_edge(
-            input_idx,
-            smelter_idx,
-            ItemPerMinute::new(Rc::clone(&iron_ore), 30.0),
-        );
-        let result = solve(&config);
-
-        assert!(result.is_ok());
-        assert_graphs_equal(result.unwrap(), expected_graph);
+        let result = solve(&config).unwrap_or_else(|e| {
+            panic!("Failed to solve plan: {}", e);
+        });
+        assert_graphs_equal(result, expected_graph);
     }
 
     #[test]
@@ -188,51 +285,29 @@ mod tests {
             "Recipe_Alternate_PureIronIngot_C",
         ]);
 
-        let iron_ore = game_db.find_item("Desc_OreIron_C").unwrap();
+        let expected_graph = graph_builder!(
+            Graph(game_db) {
+                nodes: [
+                    0 [Output("Desc_IronIngot_C", 65.0)],
+                    1 [Production("Recipe_Alternate_PureIronIngot_C", 1.0)],
+                    2 [Input("Desc_OreIron_C", 35.0)],
+                    3 [Input("Desc_Water_C", 20.0)]
+                ],
+                edges: [
+                    3 -> 1 ["Desc_Water_C", 20.0],
+                    2 -> 1 ["Desc_OreIron_C", 35.0],
+                    1 -> 0 ["Desc_IronIngot_C", 65.0]
+                ]
+            }
+        );
+
         let iron_ingot = game_db.find_item("Desc_IronIngot_C").unwrap();
-        let water = game_db.find_item("Desc_Water_C").unwrap();
+        let config = PlanConfig::new(vec![ItemPerMinute::new(iron_ingot, 65.0)], game_db);
 
-        let iron_ingot_recipe = game_db
-            .find_recipe("Recipe_Alternate_PureIronIngot_C")
-            .unwrap();
-
-        let config = PlanConfig::new(
-            vec![ItemPerMinute::new(Rc::clone(&iron_ingot), 65.0)],
-            game_db,
-        );
-
-        let mut expected_graph = SolvedGraph::new();
-        let output_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_output(Rc::clone(&iron_ingot), 65.0));
-        let refinery_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
-            Rc::clone(&iron_ingot_recipe),
-            1.0,
-        ));
-        let ore_input_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&iron_ore), 35.0));
-
-        let water_input_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&water), 20.0));
-
-        expected_graph.add_edge(
-            refinery_idx,
-            output_idx,
-            ItemPerMinute::new(Rc::clone(&iron_ingot), 65.0),
-        );
-        expected_graph.add_edge(
-            ore_input_idx,
-            refinery_idx,
-            ItemPerMinute::new(Rc::clone(&iron_ore), 35.0),
-        );
-        expected_graph.add_edge(
-            water_input_idx,
-            refinery_idx,
-            ItemPerMinute::new(Rc::clone(&water), 20.0),
-        );
-        let result = solve(&config);
-
-        assert!(result.is_ok());
-        assert_graphs_equal(result.unwrap(), expected_graph);
+        let result = solve(&config).unwrap_or_else(|e| {
+            panic!("Failed to solve plan: {}", e);
+        });
+        assert_graphs_equal(result, expected_graph);
     }
 
     #[test]
@@ -243,76 +318,39 @@ mod tests {
             "Recipe_IronRod_C",
         ]);
 
-        let iron_ore = game_db.find_item("Desc_OreIron_C").unwrap();
-        let iron_ingot = game_db.find_item("Desc_IronIngot_C").unwrap();
+        let expected_graph = graph_builder!(
+            Graph(game_db) {
+                nodes: [
+                    0 [Output("Desc_IronPlate_C", 60.0)],
+                    1 [Output("Desc_IronRod_C", 30.0)],
+                    2 [Production("Recipe_IronPlate_C", 3.0)],
+                    3 [Production("Recipe_IronRod_C", 2.0)],
+                    4 [Production("Recipe_IngotIron_C", 4.0)],
+                    5 [Input("Desc_OreIron_C", 120.0)]
+                ],
+                edges: [
+                    5 -> 4 ["Desc_OreIron_C", 120.0],
+                    4 -> 3 ["Desc_IronIngot_C", 30.0],
+                    4 -> 2 ["Desc_IronIngot_C", 90.0],
+                    3 -> 1 ["Desc_IronRod_C", 30.0],
+                    2 -> 0 ["Desc_IronPlate_C", 60.0]
+                ]
+            }
+        );
+
         let iron_plate = game_db.find_item("Desc_IronPlate_C").unwrap();
         let iron_rod = game_db.find_item("Desc_IronRod_C").unwrap();
-
-        let iron_ingot_recipe = game_db.find_recipe("Recipe_IngotIron_C").unwrap();
-        let iron_plate_recipe = game_db.find_recipe("Recipe_IronPlate_C").unwrap();
-        let iron_rod_recipe = game_db.find_recipe("Recipe_IronRod_C").unwrap();
-
         let config = PlanConfig::new(
             vec![
-                ItemPerMinute::new(Rc::clone(&iron_rod), 30.0),
-                ItemPerMinute::new(Rc::clone(&iron_plate), 60.0),
+                ItemPerMinute::new(iron_rod, 30.0),
+                ItemPerMinute::new(iron_plate, 60.0),
             ],
             game_db,
         );
-
-        let mut expected_graph = SolvedGraph::new();
-        let plate_output_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_output(Rc::clone(&iron_plate), 60.0));
-        let rod_output_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_output(Rc::clone(&iron_rod), 30.0));
-
-        let plate_prod_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
-            Rc::clone(&iron_plate_recipe),
-            3.0,
-        ));
-        let rod_prod_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
-            Rc::clone(&iron_rod_recipe),
-            2.0,
-        ));
-        let smelter_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
-            Rc::clone(&iron_ingot_recipe),
-            4.0,
-        ));
-        let input_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&iron_ore), 120.0));
-
-        expected_graph.add_edge(
-            plate_prod_idx,
-            plate_output_idx,
-            ItemPerMinute::new(Rc::clone(&iron_plate), 60.0),
-        );
-
-        expected_graph.add_edge(
-            rod_prod_idx,
-            rod_output_idx,
-            ItemPerMinute::new(Rc::clone(&iron_rod), 30.0),
-        );
-
-        expected_graph.add_edge(
-            smelter_idx,
-            rod_prod_idx,
-            ItemPerMinute::new(Rc::clone(&iron_ingot), 30.0),
-        );
-
-        expected_graph.add_edge(
-            smelter_idx,
-            plate_prod_idx,
-            ItemPerMinute::new(Rc::clone(&iron_ingot), 90.0),
-        );
-        expected_graph.add_edge(
-            input_idx,
-            smelter_idx,
-            ItemPerMinute::new(Rc::clone(&iron_ore), 120.0),
-        );
-        let result = solve(&config);
-
-        assert!(result.is_ok());
-        assert_graphs_equal(result.unwrap(), expected_graph);
+        let result = solve(&config).unwrap_or_else(|e| {
+            panic!("Failed to solve plan: {}", e);
+        });
+        assert_graphs_equal(result, expected_graph);
     }
 
     #[test]
@@ -323,145 +361,54 @@ mod tests {
             "Recipe_IngotCaterium_C",
             "Recipe_Wire_C",
             "Recipe_Alternate_FusedWire_C",
-            "Recipe_Alternate_Wire_1_C",
-            "Recipe_Alternate_Wire_2_C",
+            "Recipe_Alternate_Wire_1_C", // Iron Wire
+            "Recipe_Alternate_Wire_2_C", // Caterium Wire
         ]);
+
+        let expected_graph = graph_builder!(
+            Graph(game_db) {
+                nodes: [
+                    0 [Output("Desc_Wire_C", 232.5)],
+                    1 [Production("Recipe_Alternate_Wire_1_C", 1.0)],
+                    2 [Production("Recipe_Alternate_FusedWire_C", 1.0)],
+                    3 [Production("Recipe_Alternate_Wire_2_C", 1.0)],
+                    4 [Production("Recipe_IngotIron_C", 12.5 / 30.0)],
+                    5 [Production("Recipe_IngotCopper_C", 0.4)],
+                    6 [Production("Recipe_IngotCaterium_C", 1.2)],
+                    7 [Input("Desc_OreIron_C", 12.5)],
+                    8 [Input("Desc_OreCopper_C", 12.0)],
+                    9 [Input("Desc_OreGold_C", 54.0)]
+                ],
+                edges: [
+                    9 -> 6 ["Desc_OreGold_C", 54.0],
+                    8 -> 5 ["Desc_OreCopper_C", 12.0],
+                    7 -> 4 ["Desc_OreIron_C", 12.5],
+                    6 -> 3 ["Desc_GoldIngot_C", 15.0],
+                    6 -> 2 ["Desc_GoldIngot_C", 3.0],
+                    5 -> 2 ["Desc_CopperIngot_C", 12.0],
+                    4 -> 1 ["Desc_IronIngot_C", 12.5],
+                    3 -> 0 ["Desc_Wire_C", 120.0],
+                    2 -> 0 ["Desc_Wire_C", 90.0],
+                    1 -> 0 ["Desc_Wire_C", 22.5]
+                ]
+            }
+        );
 
         let iron_ore = game_db.find_item("Desc_OreIron_C").unwrap();
         let copper_ore = game_db.find_item("Desc_OreCopper_C").unwrap();
-        let caterium_ore = game_db.find_item("Desc_OreGold_C").unwrap();
-
-        let iron_ingot = game_db.find_item("Desc_IronIngot_C").unwrap();
-        let copper_ingot = game_db.find_item("Desc_CopperIngot_C").unwrap();
-        let caterium_ingot = game_db.find_item("Desc_GoldIngot_C").unwrap();
-
         let wire = game_db.find_item("Desc_Wire_C").unwrap();
 
-        let iron_ingot_recipe = game_db.find_recipe("Recipe_IngotIron_C").unwrap();
-        let copper_ingot_recipe = game_db.find_recipe("Recipe_IngotCopper_C").unwrap();
-        let caterium_ingot_recipe = game_db.find_recipe("Recipe_IngotCaterium_C").unwrap();
-
-        let iron_wire_recipe = game_db.find_recipe("Recipe_Alternate_Wire_1_C").unwrap();
-        let fused_wire_recipe = game_db.find_recipe("Recipe_Alternate_FusedWire_C").unwrap();
-        let caterium_wire_recipe = game_db.find_recipe("Recipe_Alternate_Wire_2_C").unwrap();
-
         let mut input_limits = HashMap::new();
-        input_limits.insert(Rc::clone(&iron_ore), 12.5);
-        input_limits.insert(Rc::clone(&copper_ore), 12.0);
+        input_limits.insert(iron_ore, 12.5);
+        input_limits.insert(copper_ore, 12.0);
 
-        let config = PlanConfig::with_inputs(
-            input_limits,
-            vec![ItemPerMinute::new(Rc::clone(&wire), 232.5)],
-            game_db,
-        );
+        let config =
+            PlanConfig::with_inputs(input_limits, vec![ItemPerMinute::new(wire, 232.5)], game_db);
 
-        let mut expected_graph = SolvedGraph::new();
-        let output_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_output(Rc::clone(&wire), 232.5));
-
-        let cat_wire_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
-            Rc::clone(&caterium_wire_recipe),
-            1.0,
-        ));
-
-        let fused_wire_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
-            Rc::clone(&fused_wire_recipe),
-            1.0,
-        ));
-
-        let iron_wire_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
-            Rc::clone(&iron_wire_recipe),
-            1.0,
-        ));
-
-        let iron_ingot_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
-            Rc::clone(&iron_ingot_recipe),
-            12.5 / 30.0,
-        ));
-
-        let copper_ingot_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
-            Rc::clone(&copper_ingot_recipe),
-            0.4,
-        ));
-
-        let cat_ingot_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
-            Rc::clone(&caterium_ingot_recipe),
-            1.2,
-        ));
-
-        let iron_ore_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&iron_ore), 12.5));
-
-        let copper_ore_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&copper_ore), 12.0));
-
-        let cat_ore_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&caterium_ore), 54.0));
-
-        expected_graph.add_edge(
-            cat_wire_idx,
-            output_idx,
-            ItemPerMinute::new(Rc::clone(&wire), 120.0),
-        );
-
-        expected_graph.add_edge(
-            fused_wire_idx,
-            output_idx,
-            ItemPerMinute::new(Rc::clone(&wire), 90.0),
-        );
-
-        expected_graph.add_edge(
-            iron_wire_idx,
-            output_idx,
-            ItemPerMinute::new(Rc::clone(&wire), 22.5),
-        );
-
-        expected_graph.add_edge(
-            cat_ingot_idx,
-            cat_wire_idx,
-            ItemPerMinute::new(Rc::clone(&caterium_ingot), 15.0),
-        );
-
-        expected_graph.add_edge(
-            cat_ingot_idx,
-            fused_wire_idx,
-            ItemPerMinute::new(Rc::clone(&caterium_ingot), 3.0),
-        );
-
-        expected_graph.add_edge(
-            copper_ingot_idx,
-            fused_wire_idx,
-            ItemPerMinute::new(Rc::clone(&copper_ingot), 12.0),
-        );
-
-        expected_graph.add_edge(
-            iron_ingot_idx,
-            iron_wire_idx,
-            ItemPerMinute::new(Rc::clone(&iron_ingot), 12.5),
-        );
-
-        expected_graph.add_edge(
-            iron_ore_idx,
-            iron_ingot_idx,
-            ItemPerMinute::new(Rc::clone(&iron_ore), 12.5),
-        );
-
-        expected_graph.add_edge(
-            copper_ore_idx,
-            copper_ingot_idx,
-            ItemPerMinute::new(Rc::clone(&copper_ore), 12.0),
-        );
-
-        expected_graph.add_edge(
-            cat_ore_idx,
-            cat_ingot_idx,
-            ItemPerMinute::new(Rc::clone(&caterium_ore), 54.0),
-        );
-
-        let result = solve(&config);
-
-        assert!(result.is_ok(), "{:?}", result);
-        assert_graphs_equal(result.unwrap(), expected_graph);
+        let result = solve(&config).unwrap_or_else(|e| {
+            panic!("Failed to solve plan: {}", e);
+        });
+        assert_graphs_equal(result, expected_graph);
     }
 
     #[test]
@@ -472,99 +419,147 @@ mod tests {
             "Recipe_ResidualPlastic_C",
         ]);
 
-        let oil = game_db.find_item("Desc_LiquidOil_C").unwrap();
+        let expected_graph = graph_builder!(
+            Graph(game_db) {
+                nodes: [
+                    0 [Output("Desc_LiquidFuel_C", 180.0)],
+                    1 [Output("Desc_Plastic_C", 30.0)],
+                    2 [Production("Recipe_ResidualFuel_C", 4.5)],
+                    3 [Production("Recipe_ResidualPlastic_C", 1.5)],
+                    4 [Production("Recipe_Alternate_HeavyOilResidue_C", 6.75)],
+                    5 [ByProduct("Desc_PolymerResin_C", 45.0)],
+                    6 [Input("Desc_LiquidOil_C", 202.5)],
+                    7 [Input("Desc_Water_C", 30.0)]
+                ],
+                edges: [
+                    6 -> 4 ["Desc_LiquidOil_C", 202.5],
+                    4 -> 5 ["Desc_PolymerResin_C", 45.0],
+                    4 -> 2 ["Desc_HeavyOilResidue_C", 270.0],
+                    7 -> 3 ["Desc_Water_C", 30.0],
+                    4 -> 3 ["Desc_PolymerResin_C", 90.0],
+                    3 -> 1 ["Desc_Plastic_C", 30.0],
+                    2 -> 0 ["Desc_LiquidFuel_C", 180.0]
+                ]
+            }
+        );
+
         let fuel = game_db.find_item("Desc_LiquidFuel_C").unwrap();
-        let water = game_db.find_item("Desc_Water_C").unwrap();
-        let heavy_oil_residue = game_db.find_item("Desc_HeavyOilResidue_C").unwrap();
         let plastic = game_db.find_item("Desc_Plastic_C").unwrap();
-        let polymer_resin = game_db.find_item("Desc_PolymerResin_C").unwrap();
-
-        let hor_recipe = game_db
-            .find_recipe("Recipe_Alternate_HeavyOilResidue_C")
-            .unwrap();
-        let residual_fuel_recipe = game_db.find_recipe("Recipe_ResidualFuel_C").unwrap();
-        let residual_plastic_recipe = game_db.find_recipe("Recipe_ResidualPlastic_C").unwrap();
-
         let config = PlanConfig::new(
             vec![
-                ItemPerMinute::new(Rc::clone(&fuel), 180.0),
-                ItemPerMinute::new(Rc::clone(&plastic), 30.0),
+                ItemPerMinute::new(fuel, 180.0),
+                ItemPerMinute::new(plastic, 30.0),
             ],
             game_db,
         );
+        let result = solve(&config).unwrap_or_else(|e| {
+            panic!("Failed to solve plan: {}", e);
+        });
+        assert_graphs_equal(result, expected_graph);
+    }
 
-        let mut expected_graph = SolvedGraph::new();
-        let fuel_output_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_output(Rc::clone(&fuel), 180.0));
-        let plastic_output_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_output(Rc::clone(&plastic), 30.0));
+    #[test]
+    pub fn test_diluted_packaged_fuel() {
+        let game_db = get_game_db_with_base_recipes_plus(&[
+            "Recipe_Alternate_HeavyOilResidue_C",
+            "Recipe_Alternate_DilutedPackagedFuel_C",
+        ]);
 
-        let resin_by_prod_idx = expected_graph.add_node(SolvedNodeWeight::new_by_product(
-            Rc::clone(&polymer_resin),
-            45.0,
-        ));
-
-        let hor_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
-            Rc::clone(&hor_recipe),
-            6.75,
-        ));
-
-        let plastic_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
-            Rc::clone(&residual_plastic_recipe),
-            1.5,
-        ));
-
-        let fuel_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
-            Rc::clone(&residual_fuel_recipe),
-            4.5,
-        ));
-
-        let oil_input_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&oil), 202.5));
-
-        let water_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&water), 30.0));
-
-        expected_graph.add_edge(
-            fuel_idx,
-            fuel_output_idx,
-            ItemPerMinute::new(Rc::clone(&fuel), 180.0),
+        let expected_graph = graph_builder!(
+            Graph(game_db) {
+                nodes: [
+                    0 [Output("Desc_LiquidFuel_C", 120.0)],
+                    1 [Output("Desc_Fuel_C", 20.0)],
+                    2 [Production("Recipe_UnpackageFuel_C", 2.0)],
+                    3 [Production("Recipe_Alternate_DilutedPackagedFuel_C", 7.0 / 3.0)],
+                    4 [Production("Recipe_PackagedWater_C", 7.0 / 3.0)],
+                    5 [Production("Recipe_ResidualPlastic_C", 0.5)],
+                    6 [Production("Recipe_FluidCanister_C", 1.0 / 3.0)],
+                    7 [Production("Recipe_Alternate_HeavyOilResidue_C", 1.75)],
+                    8 [ByProduct("Desc_PolymerResin_C", 5.0)],
+                    9 [Input("Desc_LiquidOil_C", 52.5)],
+                    10 [Input("Desc_Water_C", 150.0)]
+                ],
+                edges: [
+                    9 -> 7 ["Desc_LiquidOil_C", 52.5],
+                    10 -> 5 ["Desc_Water_C", 10.0],
+                    10 -> 4 ["Desc_Water_C", 140.0],
+                    7 -> 8 ["Desc_PolymerResin_C", 5.0],
+                    7 -> 5 ["Desc_PolymerResin_C", 30.0],
+                    5 -> 6 ["Desc_Plastic_C", 10.0],
+                    6 -> 4 ["Desc_FluidCanister_C", 20.0],
+                    2 -> 4 ["Desc_FluidCanister_C", 120.0],
+                    7 -> 3 ["Desc_HeavyOilResidue_C", 70.0],
+                    4 -> 3 ["Desc_PackagedWater_C", 140.0],
+                    3 -> 2 ["Desc_Fuel_C", 120.0],
+                    3 -> 1 ["Desc_Fuel_C", 20.0],
+                    2 -> 0 ["Desc_LiquidFuel_C", 120.0]
+                ]
+            }
         );
 
-        expected_graph.add_edge(
-            hor_idx,
-            fuel_idx,
-            ItemPerMinute::new(Rc::clone(&heavy_oil_residue), 270.0),
+        let fuel = game_db.find_item("Desc_LiquidFuel_C").unwrap();
+        let packaged_fuel = game_db.find_item("Desc_Fuel_C").unwrap();
+        let config = PlanConfig::new(
+            vec![
+                ItemPerMinute::new(fuel, 120.0),
+                ItemPerMinute::new(packaged_fuel, 20.0),
+            ],
+            game_db,
+        );
+        let result = solve(&config).unwrap_or_else(|e| {
+            panic!("Failed to solve plan: {}", e);
+        });
+        assert_graphs_equal(result, expected_graph);
+    }
+
+    #[test]
+    fn test_recycled_rubber_plastic_loop() {
+        let game_db = get_game_db_with_base_recipes_plus(&[
+            "Recipe_Alternate_HeavyOilResidue_C",
+            "Recipe_Alternate_DilutedFuel_C",
+            "Recipe_Alternate_Plastic_1_C",
+            "Recipe_Alternate_RecycledRubber_C",
+        ]);
+
+        let expected_graph = graph_builder!(
+            Graph(game_db) {
+                nodes: [
+                    0 [Output("Desc_Plastic_C", 300.0)],
+                    1 [Output("Desc_Rubber_C", 300.0)],
+                    2 [Production("Recipe_Alternate_RecycledRubber_C", 8.518521)],
+                    3 [Production("Recipe_Alternate_Plastic_1_C", 9.25926)],
+                    4 [Production("Recipe_Alternate_DilutedFuel_C", 16.0 / 3.0)],
+                    5 [Production("Recipe_ResidualRubber_C", 10.0 / 3.0)],
+                    6 [Production("Recipe_Alternate_HeavyOilResidue_C", 20.0 / 3.0)],
+                    7 [Input("Desc_LiquidOil_C", 200.0)],
+                    8 [Input("Desc_Water_C", 2000.0 / 3.0)]
+                ],
+                edges: [
+                    7 -> 6 ["Desc_LiquidOil_C", 200.0],
+                    8 -> 5 ["Desc_Water_C", 400.0 / 3.0],
+                    8 -> 4 ["Desc_Water_C", 1600.0 / 3.0],
+                    6 -> 5 ["Desc_PolymerResin_C", 400.0 / 3.0],
+                    6 -> 4 ["Desc_HeavyOilResidue_C", 800.0 / 3.0],
+                    4 -> 2 ["Desc_LiquidFuel_C", 2300.0 / 9.0],
+                    4 -> 3 ["Desc_LiquidFuel_C", 2500.0 / 9.0],
+                    5 -> 3 ["Desc_Rubber_C", 200.0 / 3.0],
+                    3 -> 2 ["Desc_Plastic_C", 2300.0 / 9.0],
+                    2 -> 3 ["Desc_Rubber_C", 1900.0 / 9.0],
+                    3 -> 0 ["Desc_Plastic_C", 300.0],
+                    2 -> 1 ["Desc_Rubber_C", 300.0]
+                ]
+            }
         );
 
-        expected_graph.add_edge(
-            hor_idx,
-            resin_by_prod_idx,
-            ItemPerMinute::new(Rc::clone(&polymer_resin), 45.0),
-        );
-
-        expected_graph.add_edge(
-            hor_idx,
-            plastic_idx,
-            ItemPerMinute::new(Rc::clone(&polymer_resin), 90.0),
-        );
-
-        expected_graph.add_edge(
-            water_idx,
-            plastic_idx,
-            ItemPerMinute::new(Rc::clone(&water), 30.0),
-        );
-
-        expected_graph.add_edge(
-            plastic_idx,
-            plastic_output_idx,
-            ItemPerMinute::new(Rc::clone(&plastic), 30.0),
-        );
-
-        expected_graph.add_edge(
-            oil_input_idx,
-            hor_idx,
-            ItemPerMinute::new(Rc::clone(&oil), 202.5),
+        let plastic = game_db.find_item("Desc_Plastic_C").unwrap();
+        let rubber = game_db.find_item("Desc_Rubber_C").unwrap();
+        let config = PlanConfig::new(
+            vec![
+                ItemPerMinute::new(rubber, 300.0),
+                ItemPerMinute::new(plastic, 300.0),
+            ],
+            game_db,
         );
 
         let result = solve(&config).unwrap_or_else(|e| {
@@ -574,174 +569,53 @@ mod tests {
     }
 
     #[test]
-    pub fn test_diluted_packaged_fuel() {
-        let game_db = get_test_game_db_with_recipes(&[
-            "Recipe_Alternate_HeavyOilResidue_C",
-            "Recipe_ResidualFuel_C",
-            "Recipe_Plastic_C",
-            "Recipe_ResidualPlastic_C",
-            "Recipe_PackagedWater_C",
-            "Recipe_UnpackageFuel_C",
-            "Recipe_FluidCanister_C",
-            "Recipe_Alternate_DilutedPackagedFuel_C",
+    fn test_ficsmas() {
+        let game_db = get_game_db_with_base_recipes_plus(&[
+            "Recipe_XmasBall1_C",
+            "Recipe_XmasBall2_C",
+            "Recipe_XmasBall3_C",
+            "Recipe_XmasBall4_C",
         ]);
 
-        let oil = game_db.find_item("Desc_LiquidOil_C").unwrap();
-        let fuel = game_db.find_item("Desc_LiquidFuel_C").unwrap();
-        let water = game_db.find_item("Desc_Water_C").unwrap();
-        let heavy_oil_residue = game_db.find_item("Desc_HeavyOilResidue_C").unwrap();
-        let plastic = game_db.find_item("Desc_Plastic_C").unwrap();
-        let polymer_resin = game_db.find_item("Desc_PolymerResin_C").unwrap();
-        let empty_canister = game_db.find_item("Desc_FluidCanister_C").unwrap();
-        let packaged_water = game_db.find_item("Desc_PackagedWater_C").unwrap();
-        let packaged_fuel = game_db.find_item("Desc_Fuel_C").unwrap();
+        let expected_graph = graph_builder!(
+            Graph(game_db) {
+                nodes: [
+                    0 [Output("Desc_XmasBall3_C", 10.0)],
+                    1 [Output("Desc_XmasBall4_C", 10.0)],
+                    2 [Production("Recipe_XmasBall3_C", 2.0)],
+                    3 [Production("Recipe_XmasBall4_C", 2.0)],
+                    4 [Production("Recipe_XmasBall1_C", 4.0)],
+                    5 [Production("Recipe_XmasBall2_C", 3.0)],
+                    6 [Production("Recipe_IngotIron_C", 1.0)],
+                    7 [Production("Recipe_IngotCopper_C", 2.0 / 3.0)],
+                    8 [Producer("Desc_TreeGiftProducer_C", 7.0 / 3.0)],
+                    9 [Input("Desc_OreIron_C", 30.0)],
+                    10 [Input("Desc_OreCopper_C", 20.0)]
+                ],
+                edges: [
+                    8 -> 4 ["Desc_Gift_C", 20.0],
+                    8 -> 5 ["Desc_Gift_C", 15.0],
+                    9 -> 6 ["Desc_OreIron_C", 30.0],
+                    10 -> 7 ["Desc_OreCopper_C", 20.0],
+                    6 -> 3 ["Desc_IronIngot_C", 30.0],
+                    7 -> 2 ["Desc_CopperIngot_C", 20.0],
+                    5 -> 3 ["Desc_XmasBall2_C", 30.0],
+                    4 -> 2 ["Desc_XmasBall1_C", 20.0],
+                    3 -> 1 ["Desc_XmasBall4_C", 10.0],
+                    2 -> 0 ["Desc_XmasBall3_C", 10.0]
+                ]
+            }
+        );
 
-        let hor_recipe = game_db
-            .find_recipe("Recipe_Alternate_HeavyOilResidue_C")
-            .unwrap();
-        let empty_canister_recipe = game_db.find_recipe("Recipe_FluidCanister_C").unwrap();
-        let residual_plastic_recipe = game_db.find_recipe("Recipe_ResidualPlastic_C").unwrap();
-        let unpackage_fuel_recipe = game_db.find_recipe("Recipe_UnpackageFuel_C").unwrap();
-        let packaged_water_recipe = game_db.find_recipe("Recipe_PackagedWater_C").unwrap();
-        let diluted_fuel_recipe = game_db
-            .find_recipe("Recipe_Alternate_DilutedPackagedFuel_C")
-            .unwrap();
-
+        let copper_ficsmas_ball = game_db.find_item("Desc_XmasBall3_C").unwrap();
+        let iron_ficsmas_ball = game_db.find_item("Desc_XmasBall4_C").unwrap();
         let config = PlanConfig::new(
             vec![
-                ItemPerMinute::new(Rc::clone(&fuel), 120.0),
-                ItemPerMinute::new(Rc::clone(&packaged_fuel), 20.0),
+                ItemPerMinute::new(iron_ficsmas_ball, 10.0),
+                ItemPerMinute::new(copper_ficsmas_ball, 10.0),
             ],
             game_db,
         );
-
-        let mut expected_graph = SolvedGraph::new();
-        let fuel_output_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_output(Rc::clone(&fuel), 120.0));
-        let packaged_fuel_output_idx = expected_graph.add_node(SolvedNodeWeight::new_output(
-            Rc::clone(&packaged_fuel),
-            20.0,
-        ));
-
-        let resin_by_prod_idx = expected_graph.add_node(SolvedNodeWeight::new_by_product(
-            Rc::clone(&polymer_resin),
-            5.0,
-        ));
-
-        let hor_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
-            Rc::clone(&hor_recipe),
-            1.75,
-        ));
-
-        let plastic_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
-            Rc::clone(&residual_plastic_recipe),
-            0.5,
-        ));
-
-        let empty_canister_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
-            Rc::clone(&empty_canister_recipe),
-            1.0 / 3.0,
-        ));
-
-        let packaged_water_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
-            Rc::clone(&packaged_water_recipe),
-            7.0 / 3.0,
-        ));
-
-        let diluted_fuel_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
-            Rc::clone(&diluted_fuel_recipe),
-            7.0 / 3.0,
-        ));
-
-        let unpackage_fuel_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
-            Rc::clone(&unpackage_fuel_recipe),
-            2.0,
-        ));
-
-        let oil_input_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&oil), 52.5));
-
-        let water_idx =
-            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&water), 150.0));
-
-        expected_graph.add_edge(
-            unpackage_fuel_idx,
-            fuel_output_idx,
-            ItemPerMinute::new(Rc::clone(&fuel), 120.0),
-        );
-
-        expected_graph.add_edge(
-            diluted_fuel_idx,
-            packaged_fuel_output_idx,
-            ItemPerMinute::new(Rc::clone(&packaged_fuel), 20.0),
-        );
-
-        expected_graph.add_edge(
-            diluted_fuel_idx,
-            unpackage_fuel_idx,
-            ItemPerMinute::new(Rc::clone(&packaged_fuel), 120.0),
-        );
-
-        expected_graph.add_edge(
-            unpackage_fuel_idx,
-            packaged_water_idx,
-            ItemPerMinute::new(Rc::clone(&empty_canister), 120.0),
-        );
-
-        expected_graph.add_edge(
-            packaged_water_idx,
-            diluted_fuel_idx,
-            ItemPerMinute::new(Rc::clone(&packaged_water), 140.0),
-        );
-
-        expected_graph.add_edge(
-            hor_idx,
-            diluted_fuel_idx,
-            ItemPerMinute::new(Rc::clone(&heavy_oil_residue), 70.0),
-        );
-
-        expected_graph.add_edge(
-            empty_canister_idx,
-            packaged_water_idx,
-            ItemPerMinute::new(Rc::clone(&empty_canister), 20.0),
-        );
-
-        expected_graph.add_edge(
-            water_idx,
-            packaged_water_idx,
-            ItemPerMinute::new(Rc::clone(&water), 140.0),
-        );
-
-        expected_graph.add_edge(
-            plastic_idx,
-            empty_canister_idx,
-            ItemPerMinute::new(Rc::clone(&plastic), 10.0),
-        );
-
-        expected_graph.add_edge(
-            hor_idx,
-            plastic_idx,
-            ItemPerMinute::new(Rc::clone(&polymer_resin), 30.0),
-        );
-
-        expected_graph.add_edge(
-            water_idx,
-            plastic_idx,
-            ItemPerMinute::new(Rc::clone(&water), 10.0),
-        );
-
-        expected_graph.add_edge(
-            hor_idx,
-            resin_by_prod_idx,
-            ItemPerMinute::new(Rc::clone(&polymer_resin), 5.0),
-        );
-
-        expected_graph.add_edge(
-            oil_input_idx,
-            hor_idx,
-            ItemPerMinute::new(Rc::clone(&oil), 52.5),
-        );
-
         let result = solve(&config).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);
         });
@@ -758,9 +632,9 @@ mod tests {
             {
                 Some(j) => node_mapping.insert(i, j),
                 None => panic!(
-                    "Expected node {} was not found in the actual graph {}",
-                    format_node(&expected[i]),
-                    format_graph_nodes(&actual)
+                    "Expected node {:?} was not found in the actual graph {}",
+                    expected[i],
+                    format_nodes(&actual)
                 ),
             };
         }
@@ -773,19 +647,19 @@ mod tests {
                 .find_edge(*actual_child, *actual_parent)
                 .unwrap_or_else(|| {
                     panic!(
-                        "Edge connecting {} to {} was not found in actual graph",
-                        format_node(&expected[edge.source()]),
-                        format_node(&expected[edge.target()])
+                        "Edge connecting {:?} to {:?} was not found in actual graph",
+                        expected[edge.source()],
+                        expected[edge.target()]
                     )
                 });
 
             assert!(
                 item_value_pair_equals(&actual[actual_edge], &edge.weight()),
-                "Mismatched weight for the edge connecting {} to {}. Expected: {}, actual: {}",
-                format_node(&expected[edge.source()]),
-                format_node(&expected[edge.target()]),
-                edge.weight().amount,
-                actual[actual_edge].amount
+                "Mismatched weight for the edge connecting {:?} to {:?}. Expected: {:?}, actual: {:?}",
+                expected[edge.source()],
+                expected[edge.target()],
+                edge.weight(),
+                actual[actual_edge]
             );
         }
 
@@ -808,6 +682,10 @@ mod tests {
                 SolvedNodeWeight::Production(a_recipe, a_building_count),
                 SolvedNodeWeight::Production(b_recipe, b_building_count),
             ) => a_recipe == b_recipe && float_equals(*a_building_count, *b_building_count),
+            (
+                SolvedNodeWeight::Producer(a_building, a_building_count),
+                SolvedNodeWeight::Producer(b_building, b_building_count),
+            ) => a_building == b_building && float_equals(*a_building_count, *b_building_count),
             _ => false,
         }
     }
@@ -817,26 +695,17 @@ mod tests {
     }
 
     fn float_equals(a: FloatType, b: FloatType) -> bool {
-        FloatType::abs(a - b) < EPSILON
+        round(FloatType::abs(a - b), 3) < EPSILON
     }
 
-    fn format_node(node: &SolvedNodeWeight) -> String {
-        match node {
-            SolvedNodeWeight::Input(input) => format!("Input({}:{})", input.item, input.amount),
-            SolvedNodeWeight::Output(output) => {
-                format!("Output({}:{})", output.item, output.amount)
-            }
-            SolvedNodeWeight::ByProduct(output) => {
-                format!("ByProduct({}:{})", output.item, output.amount)
-            }
-            SolvedNodeWeight::Production(recipe, building_count) => {
-                format!("Production({}, {})", recipe.name, building_count)
-            }
-        }
-    }
-
-    fn format_graph_nodes(graph: &SolvedGraph) -> String {
-        let all_nodes: Vec<String> = graph.node_weights().map(format_node).collect();
-        format!("[{}]", all_nodes.join(", "))
+    fn format_nodes(graph: &SolvedGraph) -> String {
+        format!(
+            "[{}]",
+            graph
+                .node_weights()
+                .map(|n| format!("{:?}", n))
+                .collect::<Vec<String>>()
+                .join(", ")
+        )
     }
 }

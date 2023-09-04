@@ -3,7 +3,7 @@ use super::{
     NodeWeight,
 };
 use crate::{
-    game::{Item, ItemPerMinute, Recipe},
+    game::{Building, Item, ItemPerMinute, Recipe},
     utils::{clamp_to_zero, is_zero, round, FloatType},
 };
 use good_lp::{Solution, Variable};
@@ -22,6 +22,7 @@ pub enum SolvedNodeWeight {
     Output(ItemPerMinute),
     ByProduct(ItemPerMinute),
     Production(Rc<Recipe>, FloatType),
+    Producer(Rc<Building>, FloatType),
 }
 
 impl SolvedNodeWeight {
@@ -43,6 +44,11 @@ impl SolvedNodeWeight {
     #[inline]
     pub fn new_production(recipe: Rc<Recipe>, building_count: FloatType) -> Self {
         Self::Production(recipe, building_count)
+    }
+
+    #[inline]
+    pub fn new_producer(recipe: Rc<Building>, building_count: FloatType) -> Self {
+        Self::Producer(recipe, building_count)
     }
 }
 
@@ -71,6 +77,11 @@ impl NodeWeight for SolvedNodeWeight {
     fn is_production(&self) -> bool {
         matches!(self, Self::Production(..))
     }
+
+    #[inline]
+    fn is_producer(&self) -> bool {
+        matches!(self, Self::Producer(..))
+    }
 }
 
 impl fmt::Display for SolvedNodeWeight {
@@ -98,6 +109,9 @@ impl fmt::Display for SolvedNodeWeight {
             }
             Self::Output(output, ..) => {
                 write!(f, "{}\n{} / min", output.item, round(output.amount, 3))
+            }
+            Self::Producer(building, building_count) => {
+                write!(f, "{}x {}", round(*building_count, 3), building)
             }
         }
     }
@@ -131,8 +145,11 @@ pub fn copy_solution<S: Solution>(
             PlanNodeWeight::ByProduct(item) => {
                 solved_graph.add_node(SolvedNodeWeight::new_by_product(Rc::clone(item), solution))
             }
-            PlanNodeWeight::Production(recipe) => solved_graph.add_node(
+            PlanNodeWeight::Production(recipe, _) => solved_graph.add_node(
                 SolvedNodeWeight::new_production(Rc::clone(recipe), solution),
+            ),
+            PlanNodeWeight::Producer(building) => solved_graph.add_node(
+                SolvedNodeWeight::new_producer(Rc::clone(building), solution),
             ),
         };
 
@@ -187,6 +204,10 @@ fn cleanup_by_product(graph: &mut SolvedGraph, node_idx: NodeIndex) {
     for parent in parents {
         let mut remaining_output = parent.1;
         loop {
+            if remaining_output.is_zero() {
+                break;
+            }
+
             if current_child.1.is_zero() {
                 delete_edge_between(graph, current_child.0, node_idx);
                 current_child = children.pop().unwrap();
