@@ -30,14 +30,15 @@ RESOURCE_EXTRACTOR_CLASSES = [
     "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableWaterPump'",
 ]
 
-RESOURCE_WELL_ACTIVATOR_CLASSES = "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableFrackingExtractor'"
+RESOURCE_WELL_ACTIVATOR_CLASS = "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableFrackingActivator'"
 RESOURCE_WELL_EXTRACTOR_CLASS = "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableFrackingExtractor'"
 
 RESOURCE_CLASS = "/Script/CoreUObject.Class'/Script/FactoryGame.FGResourceDescriptor'"
+BIOMASS_CLASS = "/Script/CoreUObject.Class'/Script/FactoryGame.FGItemDescriptorBiomass'"
 ITEM_CLASSES = [
     RESOURCE_CLASS,
+    BIOMASS_CLASS,
     "/Script/CoreUObject.Class'/Script/FactoryGame.FGItemDescriptor'",
-    "/Script/CoreUObject.Class'/Script/FactoryGame.FGItemDescriptorBiomass'",
     "/Script/CoreUObject.Class'/Script/FactoryGame.FGItemDescriptorNuclearFuel'",
     "/Script/CoreUObject.Class'/Script/FactoryGame.FGAmmoTypeProjectile'",
     "/Script/CoreUObject.Class'/Script/FactoryGame.FGAmmoTypeInstantHit'",
@@ -156,11 +157,6 @@ def detect_encoding(file):
 
 
 def parse_item(native_class, definition, game_db):
-    match = re.match(r'^.+\'[^.]+\.(.+)\'$', native_class)
-    if match is None:
-        raise ValueError(f"Could not parse descriptor from {native_class}")
-    descriptor = match.group(1)
-
     state = FORM_MAPPING[definition['mForm']]
     fluid = state in ('liquid', 'gas')
     resource = native_class == RESOURCE_CLASS
@@ -175,22 +171,12 @@ def parse_item(native_class, definition, game_db):
         'resource': resource,
         'state': state,
         'sink_points': 0 if fluid else int(definition['mResourceSinkPoints']),
-        'energy_mj': energy,
-        'bit_mask': None if not resource else next_bit_mask()
+        'energy_mj': energy
     }
     game_db['items'].append(item)
-    if descriptor not in game_db['items_by_descriptor']:
-        game_db['items_by_descriptor'][descriptor] = []
-    game_db['items_by_descriptor'][descriptor].append(item)
 
-
-bit_mask = 1
-def next_bit_mask():
-    global bit_mask
-    tmp = bit_mask
-    bit_mask <<= 1
-    return tmp
-
+    if native_class == BIOMASS_CLASS and energy > 0 and not fluid:
+        game_db['biomass'].append(item)
 
 def parse_manufacturer_building(definition, game_db):
     building_key = definition['ClassName'].replace('Build_', 'Desc_')
@@ -217,7 +203,7 @@ def parse_power_consumption(definition):
             'exponent': float(definition['mPowerConsumptionExponent'])
         }
 
-def parse_power_generator_building(definition, game_db):
+def parse_power_generator(definition, game_db):
     building_key = definition['ClassName'].replace('Build_', 'Desc_')
     supplemental_ratio = float(definition['mSupplementalToPowerRatio'])
     power_production = int(float(definition['mPowerProduction']))
@@ -272,6 +258,51 @@ def parse_resource_extractor(definition, game_db):
         'dimensions': BUILDING_SIZES.get(building_key)
     })
 
+def parse_resource_well(definition, game_db):
+    building_key = definition['ClassName'].replace('Build_', 'Desc_')
+
+    allowed_forms = parse_forms(definition['mAllowedResourceForms'])
+    if definition['mOnlyAllowCertainResources'] == 'True':
+        allowed_resources = parse_class_list(definition['mAllowedResources'])
+    else:
+        allowed_resources = [item['key'] for item in game_db['items'] 
+                             if item['resource'] and item['state'] in allowed_forms]
+        
+    extractor_type = definition['mExtractorTypeName']
+    if extractor_type == 'None':
+        extractor_type = None
+
+    game_db['buildings'].append({
+        'type': 'resource_well',
+        'key': building_key,
+        'name': definition['mDisplayName'],
+        'allowed_resources': allowed_resources,
+        'extractor_type': extractor_type,
+        'satellite_buildings': [],
+        'power_consumption': parse_power_consumption(definition),
+        'dimensions': BUILDING_SIZES.get(building_key)
+    })
+
+def parse_resource_well_extractor(definition, game_db):
+    building_key = definition['ClassName'].replace('Build_', 'Desc_')
+    extraction_cycle_time = float(definition['mExtractCycleTime'])
+    amount = int(definition['mItemsPerCycle'])
+
+    allowed_forms = parse_forms(definition['mAllowedResourceForms'])
+    if 'liquid' in allowed_forms or 'gas' in allowed_forms:
+        amount /= 1000.0
+
+    parent = next((b for b in game_db['buildings'] if b['key'] == 'Desc_FrackingSmasher_C'), None)
+    if parent is None:
+        raise ValueError('Could not find parent building Desc_FrackingSmasher_C')
+    parent['satellite_buildings'].append({
+        'key': building_key,
+        'name': definition['mDisplayName'],
+        'extraction_rate': amount * 60.0 / extraction_cycle_time,
+        'power_consumption': parse_power_consumption(definition),
+        'dimensions': BUILDING_SIZES.get(building_key)
+    })
+
 def parse_forms(forms):
     if len(forms) == 0:
         return []
@@ -287,8 +318,8 @@ def parse_fuels(fuels, supplemental_ratio, power_production, game_db):
         by_product_item_key = fuel['mByproduct']
         by_product_amount = fuel['mByproductAmount']
 
-        if fuel_item_key in game_db['items_by_descriptor']:
-            for fuel_item in game_db['items_by_descriptor'][fuel_item_key]:
+        if fuel_item_key == 'FGItemDescriptorBiomass':
+            for fuel_item in game_db['biomass']:
                 parsed_fuel = build_fuel(fuel_item,
                                          supplemental_item_key,
                                          by_product_item_key,
@@ -474,7 +505,7 @@ def main():
             'Desc_GasTank_C'
         ],
         'items': [],
-        'items_by_descriptor': {},
+        'biomass': [],
         'buildings': [],
         'recipes': [],
         'resource_limits': RESOURCE_MAP_LIMITS
@@ -497,15 +528,24 @@ def main():
                     parse_manufacturer_building(definition, game_db)
             elif native_class['NativeClass'] in POWER_GENERATOR_CLASSES:
                 for definition in native_class['Classes']:
-                    parse_power_generator_building(definition, game_db)
+                    parse_power_generator(definition, game_db)
             elif native_class['NativeClass'] in ITEM_PRODUCER_CLASSES:
                 for definition in native_class['Classes']:
                     parse_item_producer(definition, game_db)
             elif native_class['NativeClass'] in RESOURCE_EXTRACTOR_CLASSES:
                 for definition in native_class['Classes']:
                     parse_resource_extractor(definition, game_db)
+            elif native_class['NativeClass']  == RESOURCE_WELL_ACTIVATOR_CLASS:
+                for definition in native_class['Classes']:
+                    parse_resource_well(definition, game_db)
 
-        # third pass parse recipes
+        # third pass parse resource well satellite buildings
+        for native_class in native_classes:
+            if native_class['NativeClass']  == RESOURCE_WELL_EXTRACTOR_CLASS:
+                for definition in native_class['Classes']:
+                    parse_resource_well_extractor(definition, game_db)
+
+        # fourth pass parse recipes
         for native_class in native_classes:
             parser = None
             if native_class['NativeClass'] in RECIPE_CLASSES:
@@ -518,7 +558,7 @@ def main():
         not item['resource'], item['name'].lower()))
     game_db['buildings'].sort(key=lambda machine: machine['name'].lower())
     game_db['recipes'].sort(key=lambda recipe: recipe['name'].lower())
-    del game_db['items_by_descriptor']
+    del game_db['biomass']
 
     output_handle = None
     close_handle = False

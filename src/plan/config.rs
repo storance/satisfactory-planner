@@ -8,7 +8,7 @@ use std::path::Path;
 use std::rc::Rc;
 use thiserror::Error;
 
-use crate::game::{GameDatabase, Item, ItemValuePair, Recipe};
+use crate::game::{GameDatabase, Item, ItemPerMinute, Recipe};
 use crate::utils::FloatType;
 
 #[derive(Error, Debug, Eq, PartialEq)]
@@ -171,13 +171,13 @@ struct PlanConfigDefinition {
 #[derive(Debug, Clone)]
 pub struct PlanConfig {
     pub inputs: HashMap<Rc<Item>, FloatType>,
-    pub outputs: Vec<ItemValuePair>,
+    pub outputs: Vec<ItemPerMinute>,
     pub game_db: GameDatabase,
 }
 
 #[allow(dead_code)]
 impl PlanConfig {
-    pub fn new(outputs: Vec<ItemValuePair>, game_db: GameDatabase) -> Self {
+    pub fn new(outputs: Vec<ItemPerMinute>, game_db: GameDatabase) -> Self {
         PlanConfig {
             inputs: game_db.resource_limits.clone(),
             outputs,
@@ -187,7 +187,7 @@ impl PlanConfig {
 
     pub fn with_inputs(
         inputs: HashMap<Rc<Item>, FloatType>,
-        outputs: Vec<ItemValuePair>,
+        outputs: Vec<ItemPerMinute>,
         game_db: GameDatabase,
     ) -> Self {
         let mut all_inputs = game_db.resource_limits.clone();
@@ -218,7 +218,7 @@ impl PlanConfig {
                 return Err(PlanError::UnexpectedResource(item.name.clone()));
             }
 
-            outputs.push(ItemValuePair::new(item, value))
+            outputs.push(ItemPerMinute::new(item, value))
         }
 
         let mut inputs: HashMap<Rc<Item>, FloatType> = game_db.resource_limits.clone();
@@ -259,7 +259,7 @@ impl PlanConfig {
         self.outputs
             .iter()
             .find(|o| o.item.as_ref() == item)
-            .map(|o| o.value)
+            .map(|o| o.amount)
             .unwrap_or(0.0)
     }
 }

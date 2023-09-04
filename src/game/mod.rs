@@ -10,14 +10,14 @@ use thiserror::Error;
 
 pub use building::{Building, Dimensions, PowerConsumption};
 pub use item::{Item, ItemState};
-pub use item_value_pair::ItemValuePair;
+pub use item_value_pair::ItemPerMinute;
 pub use recipe::Recipe;
 
 use crate::utils::FloatType;
 
 use self::{
-    building::{BuildingDefinition, Fuel, ItemProducer, PowerGenerator, ResourceExtractor},
-    item_value_pair::ItemAmount,
+    building::{BuildingDefinition, Fuel, ItemProducer, PowerGenerator, ResourceExtractor, ResourceWell},
+    item_value_pair::ItemAmountDefinition,
 };
 
 #[derive(Error, Debug, Eq, PartialEq)]
@@ -169,6 +169,21 @@ impl GameDatabase {
                     dimensions: ip.dimensions,
                 })
             }
+            BuildingDefinition::ResourceWell(rw) => {
+                let mut allowed_resources = Vec::new();
+                for allowed_resource in rw.allowed_resources {
+                    allowed_resources.push(Self::find_item_by_key(&allowed_resource, items)?);
+                }
+                Building::ResourceWell(ResourceWell {
+                    key: rw.key,
+                    name: rw.name,
+                    allowed_resources,
+                    satellite_buildings: rw.satellite_buildings,
+                    extractor_type: rw.extractor_type,
+                    power_consumption: rw.power_consumption,
+                    dimensions: rw.dimensions,
+                })
+            }
         }))
     }
 
@@ -199,13 +214,13 @@ impl GameDatabase {
             .inputs
             .iter()
             .map(|i| Self::convert_item_amount(i, crafts_per_min, items))
-            .collect::<Result<Vec<ItemValuePair>, GameDatabaseError>>()?;
+            .collect::<Result<Vec<ItemPerMinute>, GameDatabaseError>>()?;
 
         let outputs = recipe
             .outputs
             .iter()
             .map(|o| Self::convert_item_amount(o, crafts_per_min, items))
-            .collect::<Result<Vec<ItemValuePair>, GameDatabaseError>>()?;
+            .collect::<Result<Vec<ItemPerMinute>, GameDatabaseError>>()?;
 
         Ok(Rc::new(Recipe {
             key: recipe.key,
@@ -221,11 +236,11 @@ impl GameDatabase {
     }
 
     pub fn convert_item_amount(
-        item_amount: &ItemAmount,
+        item_amount: &ItemAmountDefinition,
         cycles_per_min: FloatType,
         items: &[Rc<Item>],
-    ) -> Result<ItemValuePair, GameDatabaseError> {
-        Ok(ItemValuePair::new(
+    ) -> Result<ItemPerMinute, GameDatabaseError> {
+        Ok(ItemPerMinute::new(
             Self::find_item_by_key(&item_amount.item, items)?,
             item_amount.amount * cycles_per_min,
         ))

@@ -10,8 +10,7 @@
       "resource": true,
       "state": "solid",
       "sink_points": 8,
-      "energy_mj": 0,
-      "bit_mask": 2048
+      "energy_mj": 0
     },
     {
       "key": "Desc_OreGold_C",
@@ -19,8 +18,7 @@
       "resource": true,
       "state": "solid",
       "sink_points": 7,
-      "energy_mj": 0,
-      "bit_mask": 256
+      "energy_mj": 0
     },
     {
       "key": "Desc_Coal_C",
@@ -28,8 +26,7 @@
       "resource": true,
       "state": "solid",
       "sink_points": 3,
-      "energy_mj": 300,
-      "bit_mask": 8
+      "energy_mj": 300
     },
     {
       "key": "Desc_OreCopper_C",
@@ -37,8 +34,7 @@
       "resource": true,
       "state": "solid",
       "sink_points": 3,
-      "energy_mj": 0,
-      "bit_mask": 128
+      "energy_mj": 0
     },
     {
       "key": "Desc_LiquidOil_C",
@@ -46,8 +42,7 @@
       "resource": true,
       "state": "liquid",
       "sink_points": 0,
-      "energy_mj": 320,
-      "bit_mask": 32
+      "energy_mj": 320
     },
     {
       "key": "Desc_OreIron_C",
@@ -55,8 +50,7 @@
       "resource": true,
       "state": "solid",
       "sink_points": 1,
-      "energy_mj": 0,
-      "bit_mask": 2
+      "energy_mj": 0
     },
     {
       "key": "Desc_Stone_C",
@@ -64,8 +58,7 @@
       "resource": true,
       "state": "solid",
       "sink_points": 2,
-      "energy_mj": 0,
-      "bit_mask": 4
+      "energy_mj": 0
     },
     {
       "key": "Desc_NitrogenGas_C",
@@ -73,8 +66,7 @@
       "resource": true,
       "state": "gas",
       "sink_points": 0,
-      "energy_mj": 0,
-      "bit_mask": 1024
+      "energy_mj": 0
     },
     {
       "key": "Desc_RawQuartz_C",
@@ -82,8 +74,7 @@
       "resource": true,
       "state": "solid",
       "sink_points": 15,
-      "energy_mj": 0,
-      "bit_mask": 64
+      "energy_mj": 0
     },
     {
       "key": "Desc_Sulfur_C",
@@ -91,8 +82,7 @@
       "resource": true,
       "state": "solid",
       "sink_points": 11,
-      "energy_mj": 0,
-      "bit_mask": 16
+      "energy_mj": 0
     },
     {
       "key": "Desc_OreUranium_C",
@@ -100,8 +90,7 @@
       "resource": true,
       "state": "solid",
       "sink_points": 35,
-      "energy_mj": 0,
-      "bit_mask": 512
+      "energy_mj": 0
     },
     {
       "key": "Desc_Water_C",
@@ -109,8 +98,7 @@
       "resource": true,
       "state": "liquid",
       "sink_points": 0,
-      "energy_mj": 0,
-      "bit_mask": 1
+      "energy_mj": 0
     },
     {
       "key": "Desc_Snow_C",
@@ -118,8 +106,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 1,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_SpaceElevatorPart_5_C",
@@ -127,8 +114,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 86120,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_CircuitBoardHighSpeed_C",
@@ -136,8 +122,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 920,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_AluminumPlate_C",
@@ -145,8 +130,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 266,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_AlienDNACapsule_C",
@@ -154,8 +138,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 0,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_AlienProtein_C",
@@ -163,8 +146,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 0,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_AluminaSolution_C",
@@ -172,8 +154,7 @@
       "resource": false,
       "state": "liquid",
       "sink_points": 0,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_AluminumCasing_C",
@@ -181,8 +162,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 393,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_AluminumIngot_C",
@@ -190,8 +170,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 131,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_AluminumScrap_C",
@@ -199,8 +178,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 27,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_SpaceElevatorPart_7_C",
@@ -208,8 +186,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 543632,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_SpaceElevatorPart_3_C",
@@ -217,8 +194,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 1440,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Battery_C",
@@ -226,8 +202,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 465,
-      "energy_mj": 6000,
-      "bit_mask": null
+      "energy_mj": 6000
     },
     {
       "key": "BP_EquipmentDescriptorBeacon_C",
@@ -235,8 +210,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 320,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_GenericBiomass_C",
@@ -244,8 +218,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 12,
-      "energy_mj": 180,
-      "bit_mask": null
+      "energy_mj": 180
     },
     {
       "key": "Desc_Gunpowder_C",
@@ -253,8 +226,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 14,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_XmasBall2_C",
@@ -262,8 +234,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 1,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Crystal_C",
@@ -271,8 +242,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 0,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Cable_C",
@@ -280,8 +250,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 24,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_CandyCane_C",
@@ -289,8 +258,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 1,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_GoldIngot_C",
@@ -298,8 +266,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 42,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_CircuitBoard_C",
@@ -307,8 +274,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 696,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_NobeliskCluster_C",
@@ -316,8 +282,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 1376,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_ColorCartridge_C",
@@ -325,8 +290,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 10,
-      "energy_mj": 900,
-      "bit_mask": null
+      "energy_mj": 900
     },
     {
       "key": "Desc_CompactedCoal_C",
@@ -334,8 +298,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 28,
-      "energy_mj": 630,
-      "bit_mask": null
+      "energy_mj": 630
     },
     {
       "key": "Desc_Computer_C",
@@ -343,8 +306,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 17260,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Cement_C",
@@ -352,8 +314,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 12,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_CoolingSystem_C",
@@ -361,8 +322,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 12006,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_XmasBall3_C",
@@ -370,8 +330,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 1,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_CopperIngot_C",
@@ -379,8 +338,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 6,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_CopperDust_C",
@@ -388,8 +346,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 72,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_CopperSheet_C",
@@ -397,8 +354,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 24,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_CrystalOscillator_C",
@@ -406,8 +362,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 3072,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_ElectromagneticControlRod_C",
@@ -415,8 +370,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 2560,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_FluidCanister_C",
@@ -424,8 +378,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 60,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_GasTank_C",
@@ -433,8 +386,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 225,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_SteelPlateReinforced_C",
@@ -442,8 +394,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 632,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_PlutoniumCell_C",
@@ -451,8 +402,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 0,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_UraniumCell_C",
@@ -460,8 +410,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 147,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Rebar_Explosive_C",
@@ -469,8 +418,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 360,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Fabric_C",
@@ -478,8 +426,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 140,
-      "energy_mj": 15,
-      "bit_mask": null
+      "energy_mj": 15
     },
     {
       "key": "Desc_Fireworks_Projectile_02_C",
@@ -487,8 +434,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 14,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_XmasBow_C",
@@ -496,8 +442,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 1,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_XmasWreath_C",
@@ -505,8 +450,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 1,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Gift_C",
@@ -514,8 +458,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 1,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_XmasBallCluster_C",
@@ -523,8 +466,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 1,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_XmasBranch_C",
@@ -532,8 +474,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 1,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_XmasStar_C",
@@ -541,8 +482,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 1,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_FlowerPetals_C",
@@ -550,8 +490,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 10,
-      "energy_mj": 100,
-      "bit_mask": null
+      "energy_mj": 100
     },
     {
       "key": "Desc_LiquidFuel_C",
@@ -559,8 +498,7 @@
       "resource": false,
       "state": "liquid",
       "sink_points": 0,
-      "energy_mj": 750,
-      "bit_mask": null
+      "energy_mj": 750
     },
     {
       "key": "Desc_ModularFrameFused_C",
@@ -568,8 +506,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 62840,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Filter_C",
@@ -577,8 +514,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 830,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_NobeliskGas_C",
@@ -586,8 +522,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 544,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_HatcherParts_C",
@@ -595,8 +530,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 0,
-      "energy_mj": 250,
-      "bit_mask": null
+      "energy_mj": 250
     },
     {
       "key": "Desc_AluminumPlateReinforced_C",
@@ -604,8 +538,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 2804,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_ModularFrameHeavy_C",
@@ -613,8 +546,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 11520,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_HeavyOilResidue_C",
@@ -622,8 +554,7 @@
       "resource": false,
       "state": "liquid",
       "sink_points": 0,
-      "energy_mj": 400,
-      "bit_mask": null
+      "energy_mj": 400
     },
     {
       "key": "Desc_HighSpeedConnector_C",
@@ -631,8 +562,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 3776,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_HogParts_C",
@@ -640,8 +570,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 0,
-      "energy_mj": 250,
-      "bit_mask": null
+      "energy_mj": 250
     },
     {
       "key": "Desc_CartridgeSmartProjectile_C",
@@ -649,8 +578,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 855,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_HazmatFilter_C",
@@ -658,8 +586,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 2718,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_XmasBall4_C",
@@ -667,8 +594,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 1,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_IronIngot_C",
@@ -676,8 +602,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 2,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_IronPlate_C",
@@ -685,8 +610,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 6,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_SpikedRebar_C",
@@ -694,8 +618,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 8,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_IronRod_C",
@@ -703,8 +626,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 4,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Leaves_C",
@@ -712,8 +634,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 3,
-      "energy_mj": 15,
-      "bit_mask": null
+      "energy_mj": 15
     },
     {
       "key": "Desc_LiquidBiofuel_C",
@@ -721,8 +642,7 @@
       "resource": false,
       "state": "liquid",
       "sink_points": 0,
-      "energy_mj": 750,
-      "bit_mask": null
+      "energy_mj": 750
     },
     {
       "key": "Desc_SpaceElevatorPart_6_C",
@@ -730,8 +650,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 15650,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_SpaceElevatorPart_4_C",
@@ -739,8 +658,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 9960,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_ModularFrame_C",
@@ -748,8 +666,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 408,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Motor_C",
@@ -757,8 +674,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 1520,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Mycelia_C",
@@ -766,8 +682,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 10,
-      "energy_mj": 20,
-      "bit_mask": null
+      "energy_mj": 20
     },
     {
       "key": "Desc_NitricAcid_C",
@@ -775,8 +690,7 @@
       "resource": false,
       "state": "liquid",
       "sink_points": 0,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_NobeliskExplosive_C",
@@ -784,8 +698,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 152,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_NonFissibleUranium_C",
@@ -793,8 +706,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 0,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_SpaceElevatorPart_9_C",
@@ -802,8 +714,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 543424,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_NobeliskNuke_C",
@@ -811,8 +722,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 19600,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_PackagedAlumina_C",
@@ -820,8 +730,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 160,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Fuel_C",
@@ -829,8 +738,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 270,
-      "energy_mj": 750,
-      "bit_mask": null
+      "energy_mj": 750
     },
     {
       "key": "Desc_PackagedOilResidue_C",
@@ -838,8 +746,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 180,
-      "energy_mj": 400,
-      "bit_mask": null
+      "energy_mj": 400
     },
     {
       "key": "Desc_PackagedBiofuel_C",
@@ -847,8 +754,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 370,
-      "energy_mj": 750,
-      "bit_mask": null
+      "energy_mj": 750
     },
     {
       "key": "Desc_PackagedNitricAcid_C",
@@ -856,8 +762,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 412,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_PackagedNitrogenGas_C",
@@ -865,8 +770,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 312,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_PackagedOil_C",
@@ -874,8 +778,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 180,
-      "energy_mj": 320,
-      "bit_mask": null
+      "energy_mj": 320
     },
     {
       "key": "Desc_PackagedSulfuricAcid_C",
@@ -883,8 +786,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 152,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_TurboFuel_C",
@@ -892,8 +794,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 570,
-      "energy_mj": 2000,
-      "bit_mask": null
+      "energy_mj": 2000
     },
     {
       "key": "Desc_PackagedWater_C",
@@ -901,8 +802,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 130,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_PetroleumCoke_C",
@@ -910,8 +810,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 20,
-      "energy_mj": 180,
-      "bit_mask": null
+      "energy_mj": 180
     },
     {
       "key": "Desc_SpitterParts_C",
@@ -919,8 +818,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 0,
-      "energy_mj": 250,
-      "bit_mask": null
+      "energy_mj": 250
     },
     {
       "key": "Desc_Plastic_C",
@@ -928,8 +826,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 75,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_PlutoniumFuelRod_C",
@@ -937,8 +834,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 153184,
-      "energy_mj": 1500000,
-      "bit_mask": null
+      "energy_mj": 1500000
     },
     {
       "key": "Desc_PlutoniumPellet_C",
@@ -946,8 +842,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 0,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_PlutoniumWaste_C",
@@ -955,8 +850,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 0,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_PolymerResin_C",
@@ -964,8 +858,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 12,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "BP_ItemDescriptorPortableMiner_C",
@@ -973,8 +866,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 56,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_CrystalShard_C",
@@ -982,8 +874,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 0,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_PressureConversionCube_C",
@@ -991,8 +882,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 257312,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_NobeliskShockwave_C",
@@ -1000,8 +890,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 1533,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Crystal_mk3_C",
@@ -1009,8 +898,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 0,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_QuartzCrystal_C",
@@ -1018,8 +906,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 50,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_HighSpeedWire_C",
@@ -1027,8 +914,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 17,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_ModularFrameLightweight_C",
@@ -1036,8 +922,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 19600,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_XmasBall1_C",
@@ -1045,8 +930,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 1,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_IronPlateReinforced_C",
@@ -1054,8 +938,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 120,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_CartridgeStandard_C",
@@ -1063,8 +946,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 25,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Rotor_C",
@@ -1072,8 +954,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 140,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Rubber_C",
@@ -1081,8 +962,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 60,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_IronScrew_C",
@@ -1090,8 +970,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 2,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Rebar_Spreadshot_C",
@@ -1099,8 +978,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 332,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Silica_C",
@@ -1108,8 +986,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 20,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_SpaceElevatorPart_1_C",
@@ -1117,8 +994,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 520,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_GunpowderMK2_C",
@@ -1126,8 +1002,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 58,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_SnowballProjectile_C",
@@ -1135,8 +1010,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 1,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Biofuel_C",
@@ -1144,8 +1018,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 48,
-      "energy_mj": 450,
-      "bit_mask": null
+      "energy_mj": 450
     },
     {
       "key": "Desc_Fireworks_Projectile_03_C",
@@ -1153,8 +1026,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 10,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Stator_C",
@@ -1162,8 +1034,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 240,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_SteelPlate_C",
@@ -1171,8 +1042,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 64,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_SteelIngot_C",
@@ -1180,8 +1050,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 8,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_SteelPipe_C",
@@ -1189,8 +1058,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 24,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_StingerParts_C",
@@ -1198,8 +1066,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 0,
-      "energy_mj": 250,
-      "bit_mask": null
+      "energy_mj": 250
     },
     {
       "key": "Desc_Rebar_Stunshot_C",
@@ -1207,8 +1074,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 186,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_SulfuricAcid_C",
@@ -1216,8 +1082,7 @@
       "resource": false,
       "state": "liquid",
       "sink_points": 0,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_ComputerSuper_C",
@@ -1225,8 +1090,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 99576,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Fireworks_Projectile_01_C",
@@ -1234,8 +1098,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 18,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_SpaceElevatorPart_8_C",
@@ -1243,8 +1106,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 732956,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_MotorLightweight_C",
@@ -1252,8 +1114,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 242720,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_CartridgeChaos_C",
@@ -1261,8 +1122,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 120,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_LiquidTurboFuel_C",
@@ -1270,8 +1130,7 @@
       "resource": false,
       "state": "liquid",
       "sink_points": 0,
-      "energy_mj": 2000,
-      "bit_mask": null
+      "energy_mj": 2000
     },
     {
       "key": "Desc_NuclearFuelRod_C",
@@ -1279,8 +1138,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 44092,
-      "energy_mj": 750000,
-      "bit_mask": null
+      "energy_mj": 750000
     },
     {
       "key": "Desc_NuclearWaste_C",
@@ -1288,8 +1146,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 0,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_SpaceElevatorPart_2_C",
@@ -1297,8 +1154,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 1176,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Wire_C",
@@ -1306,8 +1162,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 6,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     },
     {
       "key": "Desc_Wood_C",
@@ -1315,8 +1170,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 30,
-      "energy_mj": 100,
-      "bit_mask": null
+      "energy_mj": 100
     },
     {
       "key": "Desc_Crystal_mk2_C",
@@ -1324,8 +1178,7 @@
       "resource": false,
       "state": "solid",
       "sink_points": 0,
-      "energy_mj": 0,
-      "bit_mask": null
+      "energy_mj": 0
     }
   ],
   "buildings": [
@@ -1376,13 +1229,6 @@
             "amount": 1
           },
           "burn_time_secs": 15
-        },
-        {
-          "fuel": {
-            "item": "Desc_LiquidBiofuel_C",
-            "amount": 1
-          },
-          "burn_time_secs": 25
         },
         {
           "fuel": {
@@ -1764,6 +1610,36 @@
         "length_m": 20,
         "height_m": 31
       }
+    },
+    {
+      "type": "resource_well",
+      "key": "Desc_FrackingSmasher_C",
+      "name": "Resource Well Pressurizer",
+      "allowed_resources": [
+        "Desc_LiquidOil_C",
+        "Desc_NitrogenGas_C",
+        "Desc_Water_C"
+      ],
+      "extractor_type": null,
+      "satellite_buildings": [
+        {
+          "key": "Desc_FrackingExtractor_C",
+          "name": "Resource Well Extractor",
+          "extraction_rate": 60,
+          "power_consumption": {
+            "type": "fixed",
+            "value_mw": 0,
+            "exponent": 1.321929
+          },
+          "dimensions": null
+        }
+      ],
+      "power_consumption": {
+        "type": "fixed",
+        "value_mw": 150,
+        "exponent": 1.321929
+      },
+      "dimensions": null
     },
     {
       "type": "manufacturer",

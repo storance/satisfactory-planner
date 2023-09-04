@@ -8,7 +8,7 @@ use std::{
 
 use crate::utils::FloatType;
 
-use super::{item_value_pair::ItemAmount, Item, ItemValuePair, Recipe};
+use super::{item_value_pair::ItemAmountDefinition, Item, ItemPerMinute, Recipe};
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -41,19 +41,19 @@ pub struct Manufacturer {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct FuelDefinition {
-    pub fuel: ItemAmount,
+    pub fuel: ItemAmountDefinition,
     #[serde(default)]
-    pub supplemental: Option<ItemAmount>,
+    pub supplemental: Option<ItemAmountDefinition>,
     #[serde(default)]
-    pub by_product: Option<ItemAmount>,
+    pub by_product: Option<ItemAmountDefinition>,
     pub burn_time_secs: FloatType,
 }
 
 #[derive(Debug, Clone)]
 pub struct Fuel {
-    pub fuel: ItemValuePair,
-    pub supplemental: Option<ItemValuePair>,
-    pub by_product: Option<ItemValuePair>,
+    pub fuel: ItemPerMinute,
+    pub supplemental: Option<ItemPerMinute>,
+    pub by_product: Option<ItemPerMinute>,
     pub burn_time_secs: FloatType,
 }
 
@@ -100,12 +100,43 @@ pub struct ResourceExtractor {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResourceWellExtractor {
+    pub key: String,
+    pub name: String,
+    pub extraction_rate: FloatType,
+    pub power_consumption: PowerConsumption,
+    pub dimensions: Option<Dimensions>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResourceWellDefinition {
+    pub key: String,
+    pub name: String,
+    pub power_consumption: PowerConsumption,
+    pub allowed_resources: Vec<String>,
+    pub satellite_buildings: Vec<ResourceWellExtractor>,
+    pub extractor_type: Option<String>,
+    pub dimensions: Option<Dimensions>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResourceWell {
+    pub key: String,
+    pub name: String,
+    pub power_consumption: PowerConsumption,
+    pub allowed_resources: Vec<Rc<Item>>,
+    pub satellite_buildings: Vec<ResourceWellExtractor>,
+    pub extractor_type: Option<String>,
+    pub dimensions: Option<Dimensions>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ItemProducerDefinition {
     pub key: String,
     pub name: String,
     pub power_consumption: PowerConsumption,
     pub craft_time_secs: FloatType,
-    pub output: ItemAmount,
+    pub output: ItemAmountDefinition,
     pub dimensions: Option<Dimensions>,
 }
 
@@ -115,7 +146,7 @@ pub struct ItemProducer {
     pub name: String,
     pub power_consumption: PowerConsumption,
     pub craft_time_secs: FloatType,
-    pub output: ItemValuePair,
+    pub output: ItemPerMinute,
     pub dimensions: Option<Dimensions>,
 }
 
@@ -128,8 +159,11 @@ pub(super) enum BuildingDefinition {
     PowerGenerator(PowerGeneratorDefinition),
     #[serde(rename = "resource_extractor")]
     ResourceExtractor(ResourceExtractorDefinition),
+    #[serde(rename = "resource_well")]
+    ResourceWell(ResourceWellDefinition),
     #[serde(rename = "item_producer")]
     ItemProducer(ItemProducerDefinition),
+
 }
 
 #[derive(Debug, Clone)]
@@ -138,6 +172,7 @@ pub enum Building {
     PowerGenerator(PowerGenerator),
     ResourceExtractor(ResourceExtractor),
     ItemProducer(ItemProducer),
+    ResourceWell(ResourceWell)
 }
 
 #[allow(dead_code)]
@@ -148,6 +183,7 @@ impl Building {
             Self::PowerGenerator(pg) => &pg.key,
             Self::ResourceExtractor(re) => &re.key,
             Self::ItemProducer(ip) => &ip.key,
+            Self::ResourceWell(rw) => &rw.key,
         }
     }
 
@@ -157,6 +193,7 @@ impl Building {
             Self::PowerGenerator(pg) => &pg.name,
             Self::ResourceExtractor(re) => &re.name,
             Self::ItemProducer(ip) => &ip.name,
+            Self::ResourceWell(rw) => &rw.name,
         }
     }
 
@@ -166,6 +203,7 @@ impl Building {
             Self::PowerGenerator(pg) => pg.dimensions.as_ref(),
             Self::ResourceExtractor(re) => re.dimensions.as_ref(),
             Self::ItemProducer(ip) => ip.dimensions.as_ref(),
+            Self::ResourceWell(rw) => rw.dimensions.as_ref(),
         }
     }
 
@@ -228,6 +266,19 @@ impl Building {
             }
         }
     }
+
+    pub fn is_resource_well(&self) -> bool {
+        matches!(self, Self::ResourceWell(..))
+    }
+
+    pub fn as_resource_well(&self) -> &ResourceWell {
+        match self {
+            Self::ResourceWell(rw) => rw,
+            _ => {
+                panic!("Building is not a ResourceWell")
+            }
+        }
+    }
 }
 
 impl fmt::Display for Building {
@@ -273,7 +324,7 @@ impl fmt::Display for Dimensions {
 
 #[allow(dead_code)]
 impl PowerConsumption {
-    pub fn average_mw(&self, recipe: &Recipe, clock_speed: FloatType) -> FloatType {
+    pub fn average_mw_overclocked(&self, recipe: &Recipe, clock_speed: FloatType) -> FloatType {
         match self {
             Self::Fixed { value_mw, exponent } => {
                 *value_mw as FloatType * (clock_speed / 100.0).powf(*exponent)
@@ -283,6 +334,11 @@ impl PowerConsumption {
                 avg_power * (clock_speed / 100.0).powf(*exponent)
             }
         }
+    }
+
+    #[inline]
+    pub fn average_mw(&self, recipe: &Recipe) -> FloatType {
+        self.average_mw_overclocked(recipe, 100.0)
     }
 }
 
