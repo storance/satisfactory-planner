@@ -345,4 +345,8 @@ pub mod test {
     pub fn get_test_game_db_with_recipes(recipe_keys: &[&str]) -> GameDatabase {
         get_test_game_db().filter(|r| recipe_keys.contains(&r.key.as_str()))
     }
+
+    pub fn get_game_db_with_base_recipes_plus(recipe_keys: &[&str]) -> GameDatabase {
+        get_test_game_db().filter(|r| !r.alternate || recipe_keys.contains(&r.key.as_str()))
+    }
 }

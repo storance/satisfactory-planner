@@ -220,10 +220,11 @@ fn create_partial_by_product_node(
     child_idx: NodeIndex,
     item: Rc<Item>,
 ) -> NodeIndex {
-    let idx = graph.add_node(PlanNodeWeight::new_by_product(Rc::clone(&item)));
-
-    graph.add_edge(child_idx, idx, item);
-
+    let idx = match find_by_product_node(graph, &item) {
+        Some(idx) => idx,
+        None => graph.add_node(PlanNodeWeight::new_by_product(Rc::clone(&item))),
+    };
+    graph.update_edge(child_idx, idx, item);
     idx
 }
 

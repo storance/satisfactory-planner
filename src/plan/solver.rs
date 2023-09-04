@@ -143,13 +143,15 @@ mod tests {
     use petgraph::visit::IntoEdgeReferences;
     use std::rc::Rc;
 
-    use crate::{
-        game::{test::get_test_game_db_with_recipes, ItemPerMinute},
-        plan::solved_graph::SolvedNodeWeight,
-        utils::{FloatType, EPSILON},
-    };
-
     use super::*;
+    use crate::{
+        game::{
+            test::{get_game_db_with_base_recipes_plus, get_test_game_db_with_recipes},
+            ItemPerMinute,
+        },
+        plan::solved_graph::SolvedNodeWeight,
+        utils::{round, FloatType, EPSILON},
+    };
 
     #[test]
     fn test_iron_ingot_base_recipes() {
@@ -585,14 +587,8 @@ mod tests {
 
     #[test]
     pub fn test_diluted_packaged_fuel() {
-        let game_db = get_test_game_db_with_recipes(&[
+        let game_db = get_game_db_with_base_recipes_plus(&[
             "Recipe_Alternate_HeavyOilResidue_C",
-            "Recipe_ResidualFuel_C",
-            "Recipe_Plastic_C",
-            "Recipe_ResidualPlastic_C",
-            "Recipe_PackagedWater_C",
-            "Recipe_UnpackageFuel_C",
-            "Recipe_FluidCanister_C",
             "Recipe_Alternate_DilutedPackagedFuel_C",
         ]);
 
@@ -758,6 +754,155 @@ mod tests {
         assert_graphs_equal(result, expected_graph);
     }
 
+    #[test]
+    fn test_recycled_rubber_plastic_loop() {
+        let game_db = get_game_db_with_base_recipes_plus(&[
+            "Recipe_Alternate_HeavyOilResidue_C",
+            "Recipe_Alternate_DilutedFuel_C",
+            "Recipe_Alternate_Plastic_1_C",
+            "Recipe_Alternate_RecycledRubber_C",
+        ]);
+
+        let oil = game_db.find_item("Desc_LiquidOil_C").unwrap();
+        let fuel = game_db.find_item("Desc_LiquidFuel_C").unwrap();
+        let water = game_db.find_item("Desc_Water_C").unwrap();
+        let heavy_oil_residue = game_db.find_item("Desc_HeavyOilResidue_C").unwrap();
+        let polymer_resin = game_db.find_item("Desc_PolymerResin_C").unwrap();
+        let plastic = game_db.find_item("Desc_Plastic_C").unwrap();
+        let rubber = game_db.find_item("Desc_Rubber_C").unwrap();
+
+        let hor_recipe = game_db
+            .find_recipe("Recipe_Alternate_HeavyOilResidue_C")
+            .unwrap();
+        let diluted_fuel_recipe = game_db
+            .find_recipe("Recipe_Alternate_DilutedFuel_C")
+            .unwrap();
+        let residual_rubber_recipe = game_db.find_recipe("Recipe_ResidualRubber_C").unwrap();
+        let recycled_rubber_recipe = game_db
+            .find_recipe("Recipe_Alternate_RecycledRubber_C")
+            .unwrap();
+        let recycled_plastic_recipe = game_db.find_recipe("Recipe_Alternate_Plastic_1_C").unwrap();
+
+        let config = PlanConfig::new(
+            vec![
+                ItemPerMinute::new(Rc::clone(&rubber), 300.0),
+                ItemPerMinute::new(Rc::clone(&plastic), 300.0),
+            ],
+            game_db,
+        );
+
+        let mut expected_graph = SolvedGraph::new();
+        let rubber_output_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_output(Rc::clone(&rubber), 300.0));
+        let plastic_output_idx =
+            expected_graph.add_node(SolvedNodeWeight::new_output(Rc::clone(&plastic), 300.0));
+
+        let hor_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
+            Rc::clone(&hor_recipe),
+            20.0 / 3.0,
+        ));
+        let residual_rubber_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
+            Rc::clone(&residual_rubber_recipe),
+            10.0 / 3.0,
+        ));
+        let diluted_fuel_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
+            Rc::clone(&diluted_fuel_recipe),
+            16.0 / 3.0,
+        ));
+
+        let recycled_rubber_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
+            Rc::clone(&recycled_rubber_recipe),
+            8.518521,
+        ));
+
+        let recycled_plastic_idx = expected_graph.add_node(SolvedNodeWeight::new_production(
+            Rc::clone(&recycled_plastic_recipe),
+            9.25926,
+        ));
+
+        let oil_input =
+            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&oil), 200.0));
+        let water_input =
+            expected_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(&water), 2000.0 / 3.0));
+
+        expected_graph.add_edge(
+            recycled_plastic_idx,
+            plastic_output_idx,
+            ItemPerMinute::new(Rc::clone(&plastic), 300.0),
+        );
+
+        expected_graph.add_edge(
+            recycled_rubber_idx,
+            rubber_output_idx,
+            ItemPerMinute::new(Rc::clone(&rubber), 300.0),
+        );
+
+        expected_graph.add_edge(
+            residual_rubber_idx,
+            recycled_plastic_idx,
+            ItemPerMinute::new(Rc::clone(&rubber), 200.0 / 3.0),
+        );
+
+        expected_graph.add_edge(
+            recycled_rubber_idx,
+            recycled_plastic_idx,
+            ItemPerMinute::new(Rc::clone(&rubber), 1900.0 / 9.0),
+        );
+
+        expected_graph.add_edge(
+            recycled_plastic_idx,
+            recycled_rubber_idx,
+            ItemPerMinute::new(Rc::clone(&plastic), 2300.0 / 9.0),
+        );
+
+        expected_graph.add_edge(
+            diluted_fuel_idx,
+            recycled_plastic_idx,
+            ItemPerMinute::new(Rc::clone(&fuel), 2500.0 / 9.0),
+        );
+
+        expected_graph.add_edge(
+            diluted_fuel_idx,
+            recycled_rubber_idx,
+            ItemPerMinute::new(Rc::clone(&fuel), 2300.0 / 9.0),
+        );
+
+        expected_graph.add_edge(
+            hor_idx,
+            residual_rubber_idx,
+            ItemPerMinute::new(Rc::clone(&polymer_resin), 400.0 / 3.0),
+        );
+
+        expected_graph.add_edge(
+            water_input,
+            residual_rubber_idx,
+            ItemPerMinute::new(Rc::clone(&water), 400.0 / 3.0),
+        );
+
+        expected_graph.add_edge(
+            hor_idx,
+            diluted_fuel_idx,
+            ItemPerMinute::new(Rc::clone(&heavy_oil_residue), 800.0 / 3.0),
+        );
+
+        expected_graph.add_edge(
+            water_input,
+            diluted_fuel_idx,
+            ItemPerMinute::new(Rc::clone(&water), 1600.0 / 3.0),
+        );
+
+        expected_graph.add_edge(
+            oil_input,
+            hor_idx,
+            ItemPerMinute::new(Rc::clone(&oil), 200.0),
+        );
+
+        let result = solve(&config).unwrap_or_else(|e| {
+            panic!("Failed to solve plan: {}", e);
+        });
+        assert_graphs_equal(result, expected_graph);
+    }
+
     fn assert_graphs_equal(actual: SolvedGraph, expected: SolvedGraph) {
         let mut node_mapping: HashMap<NodeIndex, NodeIndex> = HashMap::new();
 
@@ -768,8 +913,8 @@ mod tests {
             {
                 Some(j) => node_mapping.insert(i, j),
                 None => panic!(
-                    "Expected node {} was not found in the actual graph {}",
-                    format_node(&expected[i]),
+                    "Expected node {:?} was not found in the actual graph {}",
+                    &expected[i],
                     format_graph_nodes(&actual)
                 ),
             };
@@ -783,19 +928,19 @@ mod tests {
                 .find_edge(*actual_child, *actual_parent)
                 .unwrap_or_else(|| {
                     panic!(
-                        "Edge connecting {} to {} was not found in actual graph",
-                        format_node(&expected[edge.source()]),
-                        format_node(&expected[edge.target()])
+                        "Edge connecting {:?} to {:?} was not found in actual graph",
+                        &expected[edge.source()],
+                        &expected[edge.target()]
                     )
                 });
 
             assert!(
                 item_value_pair_equals(&actual[actual_edge], &edge.weight()),
-                "Mismatched weight for the edge connecting {} to {}. Expected: {}, actual: {}",
-                format_node(&expected[edge.source()]),
-                format_node(&expected[edge.target()]),
-                edge.weight().amount,
-                actual[actual_edge].amount
+                "Mismatched weight for the edge connecting {:?} to {:?}. Expected: {:?}, actual: {:?}",
+                &expected[edge.source()],
+                &expected[edge.target()],
+                edge.weight(),
+                actual[actual_edge]
             );
         }
 
@@ -827,26 +972,11 @@ mod tests {
     }
 
     fn float_equals(a: FloatType, b: FloatType) -> bool {
-        FloatType::abs(a - b) < EPSILON
-    }
-
-    fn format_node(node: &SolvedNodeWeight) -> String {
-        match node {
-            SolvedNodeWeight::Input(input) => format!("Input({}:{})", input.item, input.amount),
-            SolvedNodeWeight::Output(output) => {
-                format!("Output({}:{})", output.item, output.amount)
-            }
-            SolvedNodeWeight::ByProduct(output) => {
-                format!("ByProduct({}:{})", output.item, output.amount)
-            }
-            SolvedNodeWeight::Production(recipe, building_count) => {
-                format!("Production({}, {})", recipe.name, building_count)
-            }
-        }
+        round(FloatType::abs(a - b), 3) < EPSILON
     }
 
     fn format_graph_nodes(graph: &SolvedGraph) -> String {
-        let all_nodes: Vec<String> = graph.node_weights().map(format_node).collect();
-        format!("[{}]", all_nodes.join(", "))
+        let all_nodes: Vec<String> = graph.node_weights().map(|n| format!("{:?}", n)).collect();
+        format!("[{:?}]", all_nodes.join(", "))
     }
 }
