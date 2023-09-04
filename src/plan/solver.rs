@@ -823,7 +823,9 @@ mod tests {
     fn format_node(node: &SolvedNodeWeight) -> String {
         match node {
             SolvedNodeWeight::Input(input) => format!("Input({}:{})", input.item, input.amount),
-            SolvedNodeWeight::Output(output) => format!("Output({}:{})", output.item, output.amount),
+            SolvedNodeWeight::Output(output) => {
+                format!("Output({}:{})", output.item, output.amount)
+            }
             SolvedNodeWeight::ByProduct(output) => {
                 format!("ByProduct({}:{})", output.item, output.amount)
             }

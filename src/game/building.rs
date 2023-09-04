@@ -163,7 +163,6 @@ pub(super) enum BuildingDefinition {
     ResourceWell(ResourceWellDefinition),
     #[serde(rename = "item_producer")]
     ItemProducer(ItemProducerDefinition),
-
 }
 
 #[derive(Debug, Clone)]
@@ -172,7 +171,7 @@ pub enum Building {
     PowerGenerator(PowerGenerator),
     ResourceExtractor(ResourceExtractor),
     ItemProducer(ItemProducer),
-    ResourceWell(ResourceWell)
+    ResourceWell(ResourceWell),
 }
 
 #[allow(dead_code)]

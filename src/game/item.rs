@@ -21,7 +21,7 @@ pub struct Item {
     pub resource: bool,
     pub state: ItemState,
     pub energy_mj: u32,
-    pub sink_points: u32
+    pub sink_points: u32,
 }
 
 #[allow(dead_code)]

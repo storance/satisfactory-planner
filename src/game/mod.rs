@@ -16,7 +16,9 @@ pub use recipe::Recipe;
 use crate::utils::FloatType;
 
 use self::{
-    building::{BuildingDefinition, Fuel, ItemProducer, PowerGenerator, ResourceExtractor, ResourceWell},
+    building::{
+        BuildingDefinition, Fuel, ItemProducer, PowerGenerator, ResourceExtractor, ResourceWell,
+    },
     item_value_pair::ItemAmountDefinition,
 };
 
