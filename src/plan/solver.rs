@@ -6,11 +6,15 @@ use petgraph::{
 };
 use std::collections::HashMap;
 
+use crate::utils::FloatType;
+
 use super::{
     full_plan_graph::{build_full_plan, PlanNodeWeight},
     solved_graph::{copy_solution, SolvedGraph},
     PlanConfig,
 };
+
+const RESOURCE_WEIGHT: FloatType = 10_000.0;
 
 pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
     let full_graph = build_full_plan(config)?;
@@ -20,7 +24,8 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
     let mut by_product_variables: HashMap<NodeIndex, Variable> = HashMap::new();
 
     let mut vars = variables!();
-    let mut min_expr: Expression = 0.into();
+    let mut resource_expr: Expression = 0.into();
+    let mut complexity_expr: Expression = 0.into();
 
     for i in full_graph.node_indices() {
         match &full_graph[i] {
@@ -28,7 +33,7 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
                 let var = vars.add(variable().min(0.0));
                 if item.resource {
                     let limit = config.game_db.get_resource_limit(item);
-                    min_expr += var / limit;
+                    resource_expr += var * 10_000.0 / limit;
                 }
 
                 node_variables.insert(i, var);
@@ -37,10 +42,13 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
                 let var = vars.add(variable().min(0.0));
                 let excess_var = vars.add(variable().min(0.0));
 
-                // TODO: do we want to try to minimize by products? Maybe make it an option?
-                //min_expr += excess_var;
                 node_variables.insert(i, var);
                 by_product_variables.insert(i, excess_var);
+            }
+            PlanNodeWeight::Production(_, complexity) => {
+                let var = vars.add(variable().min(0.0));
+                complexity_expr += var * *complexity;
+                node_variables.insert(i, var);
             }
             _ => {
                 node_variables.insert(i, vars.add(variable().min(0.0)));
@@ -52,7 +60,9 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
         edge_variables.insert(e, vars.add(variable().min(0.0)));
     }
 
-    let mut problem = vars.minimise(min_expr).using(minilp);
+    let mut problem = vars
+        .minimise((RESOURCE_WEIGHT * resource_expr) + complexity_expr)
+        .using(minilp);
 
     for i in full_graph.node_indices() {
         let var = *node_variables.get(&i).unwrap();
@@ -101,7 +111,7 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
                     .with(incoming_sum.eq(var))
                     .with(outgoing_sum.eq(var));
             }
-            PlanNodeWeight::Production(recipe) => {
+            PlanNodeWeight::Production(recipe, ..) => {
                 for edge in full_graph.edges_directed(i, Outgoing) {
                     let edge_var = edge_variables.get(&edge.id()).unwrap();
                     let recipe_output = recipe.find_output_by_item(edge.weight()).unwrap();

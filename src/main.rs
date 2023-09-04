@@ -3,8 +3,10 @@ use std::path::PathBuf;
 use crate::{
     game::GameDatabase,
     plan::{print_graph, solve, PlanConfig},
+    utils::round,
 };
 use clap::Parser;
+use plan::SolvedNodeWeight;
 
 mod game;
 mod plan;
@@ -57,5 +59,27 @@ fn main() {
             panic!("Failed to solve plan: {}", e);
         });
         print_graph(&graph);
+
+        let mut floor_area = 0.0;
+        let mut volume = 0.0;
+        let mut total_buildings = 0.0;
+        let mut power_usage = 0.0;
+
+        for i in graph.node_indices() {
+            if let SolvedNodeWeight::Production(recipe, building_count) = &graph[i] {
+                floor_area += recipe.building.floor_area() * building_count;
+                volume += recipe.building.volume() * building_count;
+                total_buildings += building_count;
+                power_usage += recipe.average_mw(100.0) * building_count;
+
+                //let last_clock_speed = building_count.fract() * 100.0;
+                //power_usage += recipe.average_mw(last_clock_speed);
+            }
+        }
+
+        println!("Total Buildings: {}", round(total_buildings, 3));
+        println!("Floor Area: {} m^2", round(floor_area, 3));
+        println!("Volume: {} m^3", round(volume, 3));
+        println!("Power Usage: {} MW", round(power_usage, 3));
     }
 }
