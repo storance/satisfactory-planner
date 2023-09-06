@@ -1,6 +1,6 @@
 pub mod building;
 pub mod item;
-pub mod item_value_pair;
+pub mod item_value_pairs;
 pub mod recipe;
 
 use recipe::RecipeDefinition;
@@ -10,16 +10,13 @@ use thiserror::Error;
 
 pub use building::{Building, Dimensions, PowerConsumption};
 pub use item::{Item, ItemState};
-pub use item_value_pair::ItemPerMinute;
+pub use item_value_pairs::ItemPerMinute;
 pub use recipe::Recipe;
 
 use crate::utils::FloatType;
 
-use self::{
-    building::{
-        BuildingDefinition, Fuel, ItemProducer, PowerGenerator, ResourceExtractor, ResourceWell,
-    },
-    item_value_pair::ItemAmountDefinition,
+use self::building::{
+    BuildingDefinition, Fuel, ItemProducer, PowerGenerator, ResourceExtractor, ResourceWell,
 };
 
 #[derive(Error, Debug, Eq, PartialEq)]
@@ -40,8 +37,14 @@ pub enum GameDatabaseError {
     NotAManufacturer(String, String),
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ItemAmountDefinition {
+    pub item: String,
+    pub amount: FloatType,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
-struct GameDatabaseDefinition {
+pub struct GameDatabaseDefinition {
     by_product_blacklist: Vec<String>,
     items: Vec<Rc<Item>>,
     buildings: Vec<BuildingDefinition>,
@@ -62,7 +65,7 @@ pub struct GameDatabase {
 impl GameDatabase {
     pub fn from_file<P: AsRef<Path>>(file_path: P) -> Result<GameDatabase, anyhow::Error> {
         let file = File::open(file_path)?;
-        let config: GameDatabaseDefinition = serde_yaml::from_reader(file)?;
+        let config: GameDatabaseDefinition = serde_json::from_reader(file)?;
 
         Ok(Self::convert(config)?)
     }

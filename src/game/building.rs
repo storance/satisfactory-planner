@@ -8,7 +8,7 @@ use std::{
 
 use crate::utils::FloatType;
 
-use super::{item_value_pair::ItemAmountDefinition, Item, ItemPerMinute, Recipe};
+use super::{ItemAmountDefinition, Item, ItemPerMinute, Recipe};
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]

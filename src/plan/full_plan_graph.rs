@@ -133,13 +133,13 @@ impl fmt::Display for PlanNodeWeight {
 pub fn build_full_plan(config: &PlanConfig) -> Result<FullPlanGraph, anyhow::Error> {
     let mut graph = FullPlanGraph::new();
 
-    config.outputs.iter().for_each(|o| {
-        let idx = graph.add_node(PlanNodeWeight::new_output(Rc::clone(&o.item)));
-        create_children(config, &mut graph, idx, Rc::clone(&o.item));
+    config.production.iter().for_each(|(item, _)| {
+        let idx = graph.add_node(PlanNodeWeight::new_output(Rc::clone(item)));
+        create_children(config, &mut graph, idx, Rc::clone(item));
     });
 
-    for output in &config.outputs {
-        let idx = find_output_node(&graph, &output.item).unwrap();
+    for (item, _) in &config.production {
+        let idx = find_output_node(&graph, item).unwrap();
         let mut visited = Vec::new();
         if prune_impossible(config, &mut graph, idx, &mut visited) {
             bail!("{}", UNSOLVABLE_PLAN_ERROR);

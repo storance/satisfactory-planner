@@ -5,16 +5,12 @@ use petgraph::{
     Direction::{Incoming, Outgoing},
 };
 use std::collections::HashMap;
-
-use crate::{game::Building, utils::FloatType};
-
+use crate::game::Building;
 use super::{
     full_plan_graph::{build_full_plan, PlanNodeWeight},
     solved_graph::{copy_solution, SolvedGraph},
     PlanConfig,
 };
-
-const RESOURCE_WEIGHT: FloatType = 10_000.0;
 
 pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
     let full_graph = build_full_plan(config)?;
@@ -24,8 +20,9 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
     let mut by_product_variables: HashMap<NodeIndex, Variable> = HashMap::new();
 
     let mut vars = variables!();
-    let mut resource_expr: Expression = 0.into();
-    let mut complexity_expr: Expression = 0.into();
+    let mut maximize_output_expr: Expression = 0.into();
+    let mut minimize_expr: Expression = 0.into();
+    let mut should_maximize = false;
 
     for i in full_graph.node_indices() {
         match &full_graph[i] {
@@ -33,7 +30,7 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
                 let var = vars.add(variable().min(0.0));
                 if item.resource {
                     let limit = config.game_db.get_resource_limit(item);
-                    resource_expr += var * 10_000.0 / limit;
+                    minimize_expr += var * 10_000.0 / limit;
                 }
 
                 node_variables.insert(i, var);
@@ -45,12 +42,19 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
                 node_variables.insert(i, var);
                 by_product_variables.insert(i, excess_var);
             }
-            PlanNodeWeight::Production(_, complexity) => {
+            PlanNodeWeight::Production(..) => {
                 let var = vars.add(variable().min(0.0));
-                complexity_expr += var * *complexity;
                 node_variables.insert(i, var);
             }
-            _ => {
+            PlanNodeWeight::Output(item) => {
+                let var = vars.add(variable().min(0.0));
+                if config.find_output(item).unwrap().is_maximize() {
+                    maximize_output_expr += var;
+                    should_maximize = true;
+                }
+                node_variables.insert(i, var);
+            }
+            PlanNodeWeight::Producer(..) => {
                 node_variables.insert(i, vars.add(variable().min(0.0)));
             }
         }
@@ -60,9 +64,12 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
         edge_variables.insert(e, vars.add(variable().min(0.0)));
     }
 
-    let mut problem = vars
-        .minimise((RESOURCE_WEIGHT * resource_expr) + complexity_expr)
-        .using(minilp);
+    let mut problem = if should_maximize {
+        vars.maximise(maximize_output_expr)
+    } else {
+        vars.minimise(minimize_expr)
+    }
+    .using(minilp);
 
     for i in full_graph.node_indices() {
         let var = *node_variables.get(&i).unwrap();
@@ -75,10 +82,12 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
                     edge_sum += edge_var;
                 }
 
-                let desired_output = config.find_output(item);
-                problem = problem
-                    .with(Expression::from(var).eq(desired_output))
-                    .with(edge_sum.eq(var));
+                problem = problem.with(edge_sum.eq(var));
+                let desired_output = config.find_output(item).unwrap();
+                if desired_output.is_per_minute() {
+                    problem =
+                        problem.with(Expression::from(var).eq(desired_output.as_per_minute()));
+                }
             }
             PlanNodeWeight::Input(item) => {
                 let mut edge_sum: Expression = 0.into();
@@ -152,14 +161,16 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
 #[cfg(test)]
 mod tests {
     use petgraph::visit::IntoEdgeReferences;
+    use std::rc::Rc;
+
 
     use super::*;
     use crate::{
         game::{
             test::{get_game_db_with_base_recipes_plus, get_test_game_db_with_recipes},
-            ItemPerMinute,
+            ItemPerMinute, Item,
         },
-        plan::solved_graph::SolvedNodeWeight,
+        plan::{solved_graph::SolvedNodeWeight, ProductionAmount},
         utils::{round, FloatType, EPSILON},
     };
 
@@ -251,6 +262,46 @@ mod tests {
 
     }
 
+    macro_rules! plan_config {
+        (
+            PlanConfig {
+                game_db: $game_db:ident,
+                inputs: {$($input_item:literal : $input_amount:literal),*},
+                production: {$($item:literal : $amount:literal),+}
+            }
+        ) => {
+            {
+                let mut inputs: HashMap<Rc<Item>, FloatType> = HashMap::new();
+                $(
+                    inputs.insert(
+                        $game_db.find_item($input_item).unwrap_or_else(||
+                            panic!("Item {} does not exist", $input_item)),
+                        $input_amount);
+                )*
+
+                let mut production: HashMap<Rc<Item>, ProductionAmount> = HashMap::new();
+                $(production.insert(
+                    $game_db.find_item($item).unwrap_or_else(||
+                        panic!("Item {} does not exist", $item)),
+                        plan_config!(@amount $amount));
+                )*
+
+                PlanConfig::with_inputs(inputs, production, $game_db)
+            }
+        };
+        (
+            @amount Maximize
+        ) => {
+            ProductionAmount::Maximize
+        };
+        (
+            @amount $amount:literal
+        ) => {
+            ProductionAmount::PerMinute($amount)
+        }
+
+    }
+
     #[test]
     fn test_iron_ingot_base_recipes() {
         let game_db = get_test_game_db_with_recipes(&["Recipe_IngotIron_C"]);
@@ -269,8 +320,15 @@ mod tests {
             }
         );
 
-        let iron_ingot = game_db.find_item("Desc_IronIngot_C").unwrap();
-        let config = PlanConfig::new(vec![ItemPerMinute::new(iron_ingot, 30.0)], game_db);
+        let config = plan_config!(
+            PlanConfig {
+                game_db: game_db,
+                inputs: {},
+                production: {
+                    "Desc_IronIngot_C": 30.0
+                }
+            }
+        );
 
         let result = solve(&config).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);
@@ -301,8 +359,15 @@ mod tests {
             }
         );
 
-        let iron_ingot = game_db.find_item("Desc_IronIngot_C").unwrap();
-        let config = PlanConfig::new(vec![ItemPerMinute::new(iron_ingot, 65.0)], game_db);
+        let config = plan_config!(
+            PlanConfig {
+                game_db: game_db,
+                inputs: {},
+                production: {
+                    "Desc_IronIngot_C": 65.0
+                }
+            }
+        );
 
         let result = solve(&config).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);
@@ -338,14 +403,15 @@ mod tests {
             }
         );
 
-        let iron_plate = game_db.find_item("Desc_IronPlate_C").unwrap();
-        let iron_rod = game_db.find_item("Desc_IronRod_C").unwrap();
-        let config = PlanConfig::new(
-            vec![
-                ItemPerMinute::new(iron_rod, 30.0),
-                ItemPerMinute::new(iron_plate, 60.0),
-            ],
-            game_db,
+        let config = plan_config!(
+            PlanConfig {
+                game_db: game_db,
+                inputs: {},
+                production: {
+                    "Desc_IronPlate_C": 60.0,
+                    "Desc_IronRod_C": 30.0
+                }
+            }
         );
         let result = solve(&config).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);
@@ -394,16 +460,18 @@ mod tests {
             }
         );
 
-        let iron_ore = game_db.find_item("Desc_OreIron_C").unwrap();
-        let copper_ore = game_db.find_item("Desc_OreCopper_C").unwrap();
-        let wire = game_db.find_item("Desc_Wire_C").unwrap();
-
-        let mut input_limits = HashMap::new();
-        input_limits.insert(iron_ore, 12.5);
-        input_limits.insert(copper_ore, 12.0);
-
-        let config =
-            PlanConfig::with_inputs(input_limits, vec![ItemPerMinute::new(wire, 232.5)], game_db);
+        let config = plan_config!(
+            PlanConfig {
+                game_db: game_db,
+                inputs: {
+                    "Desc_OreIron_C": 12.5,
+                    "Desc_OreCopper_C": 12.0
+                },
+                production: {
+                    "Desc_Wire_C": 232.5
+                }
+            }
+        );
 
         let result = solve(&config).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);
@@ -443,14 +511,15 @@ mod tests {
             }
         );
 
-        let fuel = game_db.find_item("Desc_LiquidFuel_C").unwrap();
-        let plastic = game_db.find_item("Desc_Plastic_C").unwrap();
-        let config = PlanConfig::new(
-            vec![
-                ItemPerMinute::new(fuel, 180.0),
-                ItemPerMinute::new(plastic, 30.0),
-            ],
-            game_db,
+        let config = plan_config!(
+            PlanConfig {
+                game_db: game_db,
+                inputs: {},
+                production: {
+                    "Desc_LiquidFuel_C": 180.0,
+                    "Desc_Plastic_C": 30.0
+                }
+            }
         );
         let result = solve(&config).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);
@@ -498,14 +567,15 @@ mod tests {
             }
         );
 
-        let fuel = game_db.find_item("Desc_LiquidFuel_C").unwrap();
-        let packaged_fuel = game_db.find_item("Desc_Fuel_C").unwrap();
-        let config = PlanConfig::new(
-            vec![
-                ItemPerMinute::new(fuel, 120.0),
-                ItemPerMinute::new(packaged_fuel, 20.0),
-            ],
-            game_db,
+        let config = plan_config!(
+            PlanConfig {
+                game_db: game_db,
+                inputs: {},
+                production: {
+                    "Desc_LiquidFuel_C": 120.0,
+                    "Desc_Fuel_C": 20.0
+                }
+            }
         );
         let result = solve(&config).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);
@@ -552,15 +622,17 @@ mod tests {
             }
         );
 
-        let plastic = game_db.find_item("Desc_Plastic_C").unwrap();
-        let rubber = game_db.find_item("Desc_Rubber_C").unwrap();
-        let config = PlanConfig::new(
-            vec![
-                ItemPerMinute::new(rubber, 300.0),
-                ItemPerMinute::new(plastic, 300.0),
-            ],
-            game_db,
+        let config = plan_config!(
+            PlanConfig {
+                game_db: game_db,
+                inputs: {},
+                production: {
+                    "Desc_Plastic_C": 300.0,
+                    "Desc_Rubber_C": 300.0
+                }
+            }
         );
+        
 
         let result = solve(&config).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);
@@ -607,14 +679,15 @@ mod tests {
             }
         );
 
-        let copper_ficsmas_ball = game_db.find_item("Desc_XmasBall3_C").unwrap();
-        let iron_ficsmas_ball = game_db.find_item("Desc_XmasBall4_C").unwrap();
-        let config = PlanConfig::new(
-            vec![
-                ItemPerMinute::new(iron_ficsmas_ball, 10.0),
-                ItemPerMinute::new(copper_ficsmas_ball, 10.0),
-            ],
-            game_db,
+        let config = plan_config!(
+            PlanConfig {
+                game_db: game_db,
+                inputs: {},
+                production: {
+                    "Desc_XmasBall3_C": 10.0,
+                    "Desc_XmasBall4_C": 10.0
+                }
+            }
         );
         let result = solve(&config).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);

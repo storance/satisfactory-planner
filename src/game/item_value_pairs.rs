@@ -1,17 +1,10 @@
 use crate::utils::{clamp_to_zero, round, FloatType, EPSILON};
-use ::serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt;
 use std::ops::{Add, AddAssign, Neg, Sub, SubAssign};
 use std::rc::Rc;
 
 use super::Item;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ItemAmountDefinition {
-    pub item: String,
-    pub amount: FloatType,
-}
 
 #[derive(Clone, PartialEq)]
 pub struct ItemPerMinute {
