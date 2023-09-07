@@ -38,8 +38,8 @@ pub struct Recipe {
     pub power: RecipePower,
 }
 
-#[allow(dead_code)]
 impl Recipe {
+    #[inline]
     pub fn average_mw(&self, game_db: &GameDatabase, clock_speed: FloatType) -> FloatType {
         game_db[self.building]
             .as_manufacturer()
@@ -62,6 +62,7 @@ impl Recipe {
         self.outputs.iter().any(|output| output.item == item)
     }
 
+    #[inline]
     pub fn is_primary_output(&self, item: ItemId) -> bool {
         self.outputs
             .first()

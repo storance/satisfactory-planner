@@ -7,12 +7,6 @@ use crate::utils::FloatType;
 
 use super::PlanError;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InputLimit {
-    pub item: String,
-    pub amount: FloatType,
-}
-
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum OutputAmount {
@@ -54,7 +48,6 @@ impl OutputAmount {
     }
 }
 
-#[allow(dead_code)]
 impl PlanConfig {
     pub fn parse(
         config: PlanConfigDefinition,

@@ -170,8 +170,15 @@ mod tests {
     use crate::{
         game::{test::get_test_game_db, ItemId, ItemKeyAmountPair, RecipeId},
         plan::{solved_graph::SolvedNodeWeight, OutputAmount},
-        utils::{round, FloatType, EPSILON},
+        utils::{FloatType, EPSILON},
     };
+
+    pub fn round(value: FloatType, decimals: u8) -> FloatType {
+        let base: FloatType = 10.0;
+        let multiplier = base.powi(decimals as i32);
+
+        (value * multiplier).round() / multiplier
+    }
 
     macro_rules! graph_builder {
         (

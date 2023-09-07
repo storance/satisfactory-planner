@@ -64,7 +64,6 @@ pub struct GameDatabase {
     pub resource_limits: HashMap<ItemId, FloatType>,
 }
 
-#[allow(dead_code)]
 impl GameDatabase {
     pub fn from_file<P: AsRef<Path>>(file_path: P) -> Result<GameDatabase, anyhow::Error> {
         let file = File::open(file_path)?;
@@ -246,7 +245,7 @@ impl GameDatabase {
         })
     }
 
-    pub fn convert_item_amount(
+    fn convert_item_amount(
         item_amount: &ItemKeyAmountPair,
         cycles_per_min: FloatType,
         items: &[Item],
@@ -257,7 +256,6 @@ impl GameDatabase {
         ))
     }
 
-    #[inline]
     fn find_item_by_key(item_key: &str, items: &[Item]) -> Result<ItemId, GameDatabaseError> {
         items
             .iter()
@@ -266,7 +264,6 @@ impl GameDatabase {
             .ok_or(GameDatabaseError::UnknownItemKey(item_key.into()))
     }
 
-    #[inline]
     fn find_building_by_key(
         building_key: &str,
         buildings: &[Building],
@@ -293,7 +290,6 @@ impl GameDatabase {
             .map(ItemId)
     }
 
-    #[inline]
     pub fn find_item_producers(&self, item: ItemId) -> Vec<BuildingId> {
         self.buildings
             .iter()
