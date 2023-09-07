@@ -417,6 +417,57 @@ mod tests {
     }
 
     #[test]
+    fn test_reinforced_iron_plates_with_provided_inputs() {
+        let game_db = Arc::new(get_test_game_db());
+        let enabled_recipes: Vec<RecipeId> = game_db.filter_recipes(|r| {
+            !r.alternate
+        });
+
+        let expected_graph = graph_builder!(
+            Graph(game_db) {
+                nodes: [
+                    0 [Output("Desc_IronPlateReinforced_C", 7.5)],
+                    1 [Production("Recipe_IronPlateReinforced_C", 1.5)],
+                    2 [Production("Recipe_Screw_C", 0.75)],
+                    3 [Production("Recipe_IronPlate_C", 2.25)],
+                    4 [Production("Recipe_IronRod_C", 0.5)],
+                    5 [Production("Recipe_IngotIron_C", 2.5)],
+                    6 [Input("Desc_OreIron_C", 75.0)],
+                    7 [Input("Desc_IronScrew_C", 60.0)]
+                ],
+                edges: [
+                    6 -> 5 ["Desc_OreIron_C", 75.0],
+                    5 -> 3 ["Desc_IronIngot_C", 67.5],
+                    5 -> 4 ["Desc_IronIngot_C", 7.5],
+                    4 -> 2 ["Desc_IronRod_C", 7.5],
+                    7 -> 1 ["Desc_IronScrew_C", 60.0],
+                    3 -> 1 ["Desc_IronPlate_C", 45.0],
+                    2 -> 1 ["Desc_IronScrew_C", 30.0],
+                    1 -> 0 ["Desc_IronPlateReinforced_C", 7.5]
+                ]
+            }
+        );
+
+        let inputs = inputs!(game_db {
+            "Desc_IronScrew_C": 60.0
+        });
+        let outputs = outputs!(game_db {
+            "Desc_IronPlateReinforced_C": 7.5
+        });
+        let config = PlanConfig {
+            game_db,
+            inputs,
+            outputs,
+            enabled_recipes,
+        };
+
+        let result = solve(&config).unwrap_or_else(|e| {
+            panic!("Failed to solve plan: {}", e);
+        });
+        assert_graphs_equal(result, expected_graph);
+    }
+
+    #[test]
     fn test_wire_with_input_limits() {
         let game_db = Arc::new(get_test_game_db());
         let enabled_recipes: Vec<RecipeId> = game_db.filter_recipes(|r| {
