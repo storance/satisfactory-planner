@@ -1,7 +1,7 @@
 use super::{
     full_plan_graph::{build_full_plan, PlanNodeWeight},
     solved_graph::{copy_solution, SolvedGraph},
-    PlanConfig, SolverError,
+    PlanConfig, PlanError,
 };
 use crate::game::Building;
 use good_lp::{minilp, variable, variables, Expression, SolverModel, Variable};
@@ -12,7 +12,7 @@ use petgraph::{
 };
 use std::collections::HashMap;
 
-pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, SolverError> {
+pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, PlanError> {
     let full_graph = build_full_plan(config)?;
 
     let mut node_variables: HashMap<NodeIndex, Variable> = HashMap::new();
@@ -26,10 +26,11 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, SolverError> {
 
     for i in full_graph.node_indices() {
         match &full_graph[i] {
-            PlanNodeWeight::Input(item) => {
+            PlanNodeWeight::Input(item_id) => {
                 let var = vars.add(variable().min(0.0));
+                let item = &config.game_db[*item_id];
                 if item.resource {
-                    let limit = config.game_db.get_resource_limit(item);
+                    let limit = config.game_db.get_resource_limit(*item_id);
                     minimize_expr += var * 10_000.0 / limit;
                 }
 
@@ -48,7 +49,7 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, SolverError> {
             }
             PlanNodeWeight::Output(item) => {
                 let var = vars.add(variable().min(0.0));
-                if config.find_output(item).unwrap().is_maximize() {
+                if config.find_output(*item).unwrap().is_maximize() {
                     maximize_output_expr += var;
                     should_maximize = true;
                 }
@@ -83,7 +84,7 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, SolverError> {
                 }
 
                 problem = problem.with(edge_sum.eq(var));
-                let desired_output = config.find_output(item).unwrap();
+                let desired_output = config.find_output(*item).unwrap();
                 if desired_output.is_per_minute() {
                     problem =
                         problem.with(Expression::from(var).eq(desired_output.as_per_minute()));
@@ -96,7 +97,7 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, SolverError> {
                     edge_sum += edge_var;
                 }
 
-                let limit = config.find_input(item);
+                let limit = config.find_input(*item);
                 problem = problem
                     .with(Expression::from(var).leq(limit))
                     .with(edge_sum.eq(var));
@@ -120,17 +121,18 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, SolverError> {
                     .with(incoming_sum.eq(var))
                     .with(outgoing_sum.eq(var));
             }
-            PlanNodeWeight::Production(recipe, ..) => {
+            PlanNodeWeight::Production(recipe_id, ..) => {
+                let recipe = &config.game_db[*recipe_id];
                 for edge in full_graph.edges_directed(i, Outgoing) {
                     let edge_var = edge_variables.get(&edge.id()).unwrap();
-                    let recipe_output = recipe.find_output_by_item(edge.weight()).unwrap();
+                    let recipe_output = recipe.find_output_by_item(*edge.weight()).unwrap();
 
                     problem = problem.with((var * recipe_output.amount).eq(edge_var));
                 }
 
                 for edge in full_graph.edges_directed(i, Incoming) {
                     let edge_var = edge_variables.get(&edge.id()).unwrap();
-                    let recipe_input = recipe.find_input_by_item(edge.weight()).unwrap();
+                    let recipe_input = recipe.find_input_by_item(*edge.weight()).unwrap();
 
                     problem = problem.with((var * recipe_input.amount).eq(edge_var));
                 }
@@ -142,15 +144,16 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, SolverError> {
                     edge_sum += edge_var;
                 }
 
-                if let Building::ItemProducer(ip) = building.as_ref() {
+                if let Building::ItemProducer(ip) = &config.game_db[*building] {
                     problem = problem.with(edge_sum.eq(var * ip.output.amount));
                 }
             }
         }
     }
 
-    let solution = problem.solve()?;
+    let solution = problem.solve().map_err(|_| PlanError::UnsolvablePlan)?;
     Ok(copy_solution(
+        config,
         &full_graph,
         solution,
         node_variables,
@@ -165,8 +168,8 @@ mod tests {
 
     use super::*;
     use crate::{
-        game::{test::get_test_game_db, Item, ItemPerMinute},
-        plan::{solved_graph::SolvedNodeWeight, ProductionAmount},
+        game::{test::get_test_game_db, ItemId, ItemKeyAmountPair, RecipeId},
+        plan::{solved_graph::SolvedNodeWeight, OutputAmount},
         utils::{round, FloatType, EPSILON},
     };
 
@@ -200,10 +203,7 @@ mod tests {
                             panic!("Source Node {} does not exist", $source));
                         let target_id = *node_mappings.get(&$target).unwrap_or_else(||
                             panic!("Target Node {} does not exist", $target));
-                        let item = $game_db.find_item($item).unwrap_or_else(||
-                            panic!("Item {} does not exist", $item));
-
-                        temp_graph.add_edge(src_id, target_id, ItemPerMinute::new(item, $amount));
+                        temp_graph.add_edge(src_id, target_id, ItemKeyAmountPair::new($item.into(), $amount));
                     }
                 )*
 
@@ -213,106 +213,95 @@ mod tests {
         (
             @node($game_db:ident) Production($recipe: literal, $building_count:expr)
         ) => {
-            SolvedNodeWeight::new_production(
-                $game_db.find_recipe($recipe).unwrap_or_else(||
-                    panic!("Recipe {} does not exist", $recipe)),
-                $building_count
-            )
+            SolvedNodeWeight::Production {
+                recipe: $recipe.into(),
+                building_count: $building_count
+            }
         };
         (
             @node($game_db:ident) Input($item:literal, $amount:expr)
         ) => {
-            SolvedNodeWeight::new_input(
-                $game_db.find_item($item).unwrap_or_else(||
-                    panic!("Item {} does not exist", $item)),
-                $amount
-            )
+            SolvedNodeWeight::Input {
+                input: ItemKeyAmountPair::new($item.into(), $amount)
+            }
         };
         (
             @node($game_db:ident) Output($item:literal, $amount:expr)
         ) => {
-            SolvedNodeWeight::new_output(
-                $game_db.find_item($item).unwrap_or_else(||
-                    panic!("Item {} does not exist", $item)),
-                $amount
-            )
+            SolvedNodeWeight::Output {
+                output: ItemKeyAmountPair::new($item.into(), $amount)
+            }
         };
         (
             @node($game_db:ident) ByProduct($item:literal, $amount:expr)
         ) => {
-            SolvedNodeWeight::new_by_product(
-                $game_db.find_item($item).unwrap_or_else(||
-                    panic!("Item {} does not exist", $item)),
-                $amount
-            )
+            SolvedNodeWeight::ByProduct {
+                by_product: ItemKeyAmountPair::new($item.into(), $amount)
+            }
         };
         (
             @node($game_db:ident) Producer($building: literal, $building_count:expr)
         ) => {
-            SolvedNodeWeight::new_producer(
-                $game_db.find_building($building).unwrap_or_else(||
-                    panic!("Building {} does not exist", $building)),
-                $building_count
-            )
+            SolvedNodeWeight::Producer {
+                building: $building.into(),
+                count: $building_count
+            }
         };
 
     }
 
-    macro_rules! plan_config {
+    macro_rules! inputs {
+        ($game_db:ident {}) => {
+            $game_db.resource_limits.clone()
+        };
         (
-            PlanConfig {
-                game_db: $game_db:ident,
-                inputs: {$($input_item:literal : $input_amount:literal),*},
-                outputs: {$($item:literal : $amount:literal),+},
-                enabled_recipes: $enabled_recipes:ident
-            }
+            $game_db:ident {$($item:literal : $amount:literal),+}
         ) => {
             {
                 let mut inputs = $game_db.resource_limits.clone();
                 $(
                     inputs.insert(
-                        $game_db.find_item($input_item).unwrap_or_else(||
-                            panic!("Item {} does not exist", $input_item)),
-                        $input_amount);
-                )*
+                        $game_db.find_item($item).unwrap_or_else(||
+                            panic!("Item {} does not exist", $item)),
+                        $amount);
+                )+
 
-                let mut outputs: HashMap<Arc<Item>, ProductionAmount> = HashMap::new();
+                inputs
+            }
+        }
+    }
+    macro_rules! outputs {
+        (
+            $game_db:ident {$($item:literal : $amount:literal),+}
+        ) => {
+            {
+                let mut outputs: HashMap<ItemId, OutputAmount> = HashMap::new();
                 $(outputs.insert(
                     $game_db.find_item($item).unwrap_or_else(||
                         panic!("Item {} does not exist", $item)),
-                        plan_config!(@amount $amount));
-                )*
+                        outputs!(@amount $amount));
+                )+
 
-                PlanConfig {
-                    inputs,
-                    outputs,
-                    game_db: $game_db,
-                    enabled_recipes: $enabled_recipes
-                }
+                outputs
             }
         };
         (
             @amount Maximize
         ) => {
-            ProductionAmount::Maximize
+            OutputAmount::Maximize
         };
         (
             @amount $amount:literal
         ) => {
-            ProductionAmount::PerMinute($amount)
-        }
-
+            OutputAmount::PerMinute($amount)
+        };
     }
 
     #[test]
     fn test_iron_ingot_base_recipes() {
         let game_db = Arc::new(get_test_game_db());
-        let enabled_recipes: Vec<Arc<crate::game::Recipe>> = game_db
-            .recipes
-            .iter()
-            .filter(|r| r.key == "Recipe_IngotIron_C")
-            .cloned()
-            .collect();
+        let enabled_recipes: Vec<RecipeId> =
+            game_db.filter_recipes(|r| r.key == "Recipe_IngotIron_C");
 
         let expected_graph = graph_builder!(
             Graph(game_db) {
@@ -328,16 +317,16 @@ mod tests {
             }
         );
 
-        let config = plan_config!(
-            PlanConfig {
-                game_db: game_db,
-                inputs: {},
-                outputs: {
-                    "Desc_IronIngot_C": 30.0
-                },
-                enabled_recipes: enabled_recipes
-            }
-        );
+        let inputs = inputs!(game_db {});
+        let outputs = outputs!(game_db {
+            "Desc_IronIngot_C": 30.0
+        });
+        let config = PlanConfig {
+            game_db,
+            inputs,
+            outputs,
+            enabled_recipes,
+        };
 
         let result = solve(&config).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);
@@ -348,14 +337,9 @@ mod tests {
     #[test]
     fn test_iron_ingot_with_pure_ingot_recipe() {
         let game_db = Arc::new(get_test_game_db());
-        let enabled_recipes: Vec<Arc<crate::game::Recipe>> = game_db
-            .recipes
-            .iter()
-            .filter(|r| {
-                r.key == "Recipe_IngotIron_C" || r.key == "Recipe_Alternate_PureIronIngot_C"
-            })
-            .cloned()
-            .collect();
+        let enabled_recipes: Vec<RecipeId> = game_db.filter_recipes(|r| {
+            r.key == "Recipe_IngotIron_C" || r.key == "Recipe_Alternate_PureIronIngot_C"
+        });
 
         let expected_graph = graph_builder!(
             Graph(game_db) {
@@ -373,16 +357,16 @@ mod tests {
             }
         );
 
-        let config = plan_config!(
-            PlanConfig {
-                game_db: game_db,
-                inputs: {},
-                outputs: {
-                    "Desc_IronIngot_C": 65.0
-                },
-                enabled_recipes: enabled_recipes
-            }
-        );
+        let inputs = inputs!(game_db {});
+        let outputs = outputs!(game_db {
+            "Desc_IronIngot_C": 65.0
+        });
+        let config = PlanConfig {
+            game_db: game_db,
+            inputs,
+            outputs,
+            enabled_recipes: enabled_recipes,
+        };
 
         let result = solve(&config).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);
@@ -393,12 +377,7 @@ mod tests {
     #[test]
     fn test_iron_rods_and_plates() {
         let game_db = Arc::new(get_test_game_db());
-        let enabled_recipes: Vec<Arc<crate::game::Recipe>> = game_db
-            .recipes
-            .iter()
-            .filter(|r| !r.alternate)
-            .cloned()
-            .collect();
+        let enabled_recipes: Vec<RecipeId> = game_db.filter_recipes(|r| !r.alternate);
 
         let expected_graph = graph_builder!(
             Graph(game_db) {
@@ -420,17 +399,17 @@ mod tests {
             }
         );
 
-        let config = plan_config!(
-            PlanConfig {
-                game_db: game_db,
-                inputs: {},
-                outputs: {
-                    "Desc_IronPlate_C": 60.0,
-                    "Desc_IronRod_C": 30.0
-                },
-                enabled_recipes: enabled_recipes
-            }
-        );
+        let inputs = inputs!(game_db {});
+        let outputs = outputs!(game_db {
+            "Desc_IronPlate_C": 60.0,
+            "Desc_IronRod_C": 30.0
+        });
+        let config = PlanConfig {
+            game_db,
+            inputs,
+            outputs,
+            enabled_recipes,
+        };
         let result = solve(&config).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);
         });
@@ -440,17 +419,12 @@ mod tests {
     #[test]
     fn test_wire_with_input_limits() {
         let game_db = Arc::new(get_test_game_db());
-        let enabled_recipes: Vec<Arc<crate::game::Recipe>> = game_db
-            .recipes
-            .iter()
-            .filter(|r| {
-                !r.alternate
-                    || r.key == "Recipe_Alternate_FusedWire_C"
-                    || r.key == "Recipe_Alternate_Wire_1_C"
-                    || r.key == "Recipe_Alternate_Wire_2_C"
-            })
-            .cloned()
-            .collect();
+        let enabled_recipes: Vec<RecipeId> = game_db.filter_recipes(|r| {
+            !r.alternate
+                || r.key == "Recipe_Alternate_FusedWire_C"
+                || r.key == "Recipe_Alternate_Wire_1_C"
+                || r.key == "Recipe_Alternate_Wire_2_C"
+        });
 
         let expected_graph = graph_builder!(
             Graph(game_db) {
@@ -481,19 +455,19 @@ mod tests {
             }
         );
 
-        let config = plan_config!(
-            PlanConfig {
-                game_db: game_db,
-                inputs: {
-                    "Desc_OreIron_C": 12.5,
-                    "Desc_OreCopper_C": 12.0
-                },
-                outputs: {
-                    "Desc_Wire_C": 232.5
-                },
-                enabled_recipes: enabled_recipes
-            }
-        );
+        let inputs = inputs!(game_db {
+            "Desc_OreIron_C": 12.5,
+            "Desc_OreCopper_C": 12.0
+        });
+        let outputs = outputs!(game_db {
+            "Desc_Wire_C": 232.5
+        });
+        let config = PlanConfig {
+            game_db,
+            inputs,
+            outputs,
+            enabled_recipes,
+        };
 
         let result = solve(&config).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);
@@ -504,16 +478,11 @@ mod tests {
     #[test]
     fn test_fuel_and_plastic() {
         let game_db = Arc::new(get_test_game_db());
-        let enabled_recipes: Vec<Arc<crate::game::Recipe>> = game_db
-            .recipes
-            .iter()
-            .filter(|r| {
-                r.key == "Recipe_Alternate_HeavyOilResidue_C"
-                    || r.key == "Recipe_ResidualFuel_C"
-                    || r.key == "Recipe_ResidualPlastic_C"
-            })
-            .cloned()
-            .collect();
+        let enabled_recipes: Vec<RecipeId> = game_db.filter_recipes(|r| {
+            r.key == "Recipe_Alternate_HeavyOilResidue_C"
+                || r.key == "Recipe_ResidualFuel_C"
+                || r.key == "Recipe_ResidualPlastic_C"
+        });
 
         let expected_graph = graph_builder!(
             Graph(game_db) {
@@ -539,17 +508,17 @@ mod tests {
             }
         );
 
-        let config = plan_config!(
-            PlanConfig {
-                game_db: game_db,
-                inputs: {},
-                outputs: {
-                    "Desc_LiquidFuel_C": 180.0,
-                    "Desc_Plastic_C": 30.0
-                },
-                enabled_recipes: enabled_recipes
-            }
-        );
+        let inputs = inputs!(game_db {});
+        let outputs = outputs!(game_db {
+            "Desc_LiquidFuel_C": 180.0,
+            "Desc_Plastic_C": 30.0
+        });
+        let config = PlanConfig {
+            game_db,
+            inputs,
+            outputs,
+            enabled_recipes,
+        };
         let result = solve(&config).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);
         });
@@ -559,16 +528,11 @@ mod tests {
     #[test]
     pub fn test_diluted_packaged_fuel() {
         let game_db = Arc::new(get_test_game_db());
-        let enabled_recipes: Vec<Arc<crate::game::Recipe>> = game_db
-            .recipes
-            .iter()
-            .filter(|r| {
-                !r.alternate
-                    || r.key == "Recipe_Alternate_HeavyOilResidue_C"
-                    || r.key == "Recipe_Alternate_DilutedPackagedFuel_C"
-            })
-            .cloned()
-            .collect();
+        let enabled_recipes: Vec<RecipeId> = game_db.filter_recipes(|r| {
+            !r.alternate
+                || r.key == "Recipe_Alternate_HeavyOilResidue_C"
+                || r.key == "Recipe_Alternate_DilutedPackagedFuel_C"
+        });
 
         let expected_graph = graph_builder!(
             Graph(game_db) {
@@ -603,17 +567,17 @@ mod tests {
             }
         );
 
-        let config = plan_config!(
-            PlanConfig {
-                game_db: game_db,
-                inputs: {},
-                outputs: {
-                    "Desc_LiquidFuel_C": 120.0,
-                    "Desc_Fuel_C": 20.0
-                },
-                enabled_recipes: enabled_recipes
-            }
-        );
+        let inputs = inputs!(game_db {});
+        let outputs = outputs!(game_db {
+            "Desc_LiquidFuel_C": 120.0,
+                "Desc_Fuel_C": 20.0
+        });
+        let config = PlanConfig {
+            game_db,
+            inputs,
+            outputs,
+            enabled_recipes,
+        };
         let result = solve(&config).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);
         });
@@ -623,18 +587,13 @@ mod tests {
     #[test]
     fn test_recycled_rubber_plastic_loop() {
         let game_db = Arc::new(get_test_game_db());
-        let enabled_recipes: Vec<Arc<crate::game::Recipe>> = game_db
-            .recipes
-            .iter()
-            .filter(|r| {
-                !r.alternate
-                    || r.key == "Recipe_Alternate_HeavyOilResidue_C"
-                    || r.key == "Recipe_Alternate_DilutedFuel_C"
-                    || r.key == "Recipe_Alternate_Plastic_1_C"
-                    || r.key == "Recipe_Alternate_RecycledRubber_C"
-            })
-            .cloned()
-            .collect();
+        let enabled_recipes: Vec<RecipeId> = game_db.filter_recipes(|r| {
+            !r.alternate
+                || r.key == "Recipe_Alternate_HeavyOilResidue_C"
+                || r.key == "Recipe_Alternate_DilutedFuel_C"
+                || r.key == "Recipe_Alternate_Plastic_1_C"
+                || r.key == "Recipe_Alternate_RecycledRubber_C"
+        });
 
         let expected_graph = graph_builder!(
             Graph(game_db) {
@@ -666,17 +625,17 @@ mod tests {
             }
         );
 
-        let config = plan_config!(
-            PlanConfig {
-                game_db: game_db,
-                inputs: {},
-                outputs: {
-                    "Desc_Plastic_C": 300.0,
-                    "Desc_Rubber_C": 300.0
-                },
-                enabled_recipes: enabled_recipes
-            }
-        );
+        let inputs = inputs!(game_db {});
+        let outputs = outputs!(game_db {
+            "Desc_Plastic_C": 300.0,
+                "Desc_Rubber_C": 300.0
+        });
+        let config = PlanConfig {
+            game_db,
+            inputs,
+            outputs,
+            enabled_recipes,
+        };
 
         let result = solve(&config).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);
@@ -687,18 +646,13 @@ mod tests {
     #[test]
     fn test_ficsmas() {
         let game_db = Arc::new(get_test_game_db());
-        let enabled_recipes: Vec<Arc<crate::game::Recipe>> = game_db
-            .recipes
-            .iter()
-            .filter(|r| {
-                !r.alternate
-                    || r.key == "Recipe_XmasBall1_C"
-                    || r.key == "Recipe_XmasBall2_C"
-                    || r.key == "Recipe_XmasBall3_C"
-                    || r.key == "Recipe_XmasBall4_C"
-            })
-            .cloned()
-            .collect();
+        let enabled_recipes: Vec<RecipeId> = game_db.filter_recipes(|r| {
+            !r.alternate
+                || r.key == "Recipe_XmasBall1_C"
+                || r.key == "Recipe_XmasBall2_C"
+                || r.key == "Recipe_XmasBall3_C"
+                || r.key == "Recipe_XmasBall4_C"
+        });
 
         let expected_graph = graph_builder!(
             Graph(game_db) {
@@ -730,17 +684,17 @@ mod tests {
             }
         );
 
-        let config = plan_config!(
-            PlanConfig {
-                game_db: game_db,
-                inputs: {},
-                outputs: {
-                    "Desc_XmasBall3_C": 10.0,
-                    "Desc_XmasBall4_C": 10.0
-                },
-                enabled_recipes: enabled_recipes
-            }
-        );
+        let inputs = inputs!(game_db {});
+        let outputs = outputs!(game_db {
+            "Desc_XmasBall3_C": 10.0,
+                "Desc_XmasBall4_C": 10.0
+        });
+        let config = PlanConfig {
+            game_db,
+            inputs,
+            outputs,
+            enabled_recipes,
+        };
         let result = solve(&config).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);
         });
@@ -779,7 +733,7 @@ mod tests {
                 });
 
             assert!(
-                item_value_pair_equals(&actual[actual_edge], &edge.weight()),
+                item_amount_equals(&actual[actual_edge], &edge.weight()),
                 "Mismatched weight for the edge connecting {:?} to {:?}. Expected: {:?}, actual: {:?}",
                 expected[edge.source()],
                 expected[edge.target()],
@@ -794,28 +748,41 @@ mod tests {
 
     fn node_equals(a_node: &SolvedNodeWeight, b_node: &SolvedNodeWeight) -> bool {
         match (a_node, b_node) {
-            (SolvedNodeWeight::Input(a), SolvedNodeWeight::Input(b)) => {
-                item_value_pair_equals(a, b)
+            (SolvedNodeWeight::Input { input: a }, SolvedNodeWeight::Input { input: b }) => {
+                item_amount_equals(a, b)
             }
-            (SolvedNodeWeight::Output(a), SolvedNodeWeight::Output(b)) => {
-                item_value_pair_equals(a, b)
-            }
-            (SolvedNodeWeight::ByProduct(a), SolvedNodeWeight::ByProduct(b)) => {
-                item_value_pair_equals(a, b)
+            (SolvedNodeWeight::Output { output: a }, SolvedNodeWeight::Output { output: b }) => {
+                item_amount_equals(a, b)
             }
             (
-                SolvedNodeWeight::Production(a_recipe, a_building_count),
-                SolvedNodeWeight::Production(b_recipe, b_building_count),
+                SolvedNodeWeight::ByProduct { by_product: a },
+                SolvedNodeWeight::ByProduct { by_product: b },
+            ) => item_amount_equals(a, b),
+            (
+                SolvedNodeWeight::Production {
+                    recipe: a_recipe,
+                    building_count: a_building_count,
+                },
+                SolvedNodeWeight::Production {
+                    recipe: b_recipe,
+                    building_count: b_building_count,
+                },
             ) => a_recipe == b_recipe && float_equals(*a_building_count, *b_building_count),
             (
-                SolvedNodeWeight::Producer(a_building, a_building_count),
-                SolvedNodeWeight::Producer(b_building, b_building_count),
-            ) => a_building == b_building && float_equals(*a_building_count, *b_building_count),
+                SolvedNodeWeight::Producer {
+                    building: a_building,
+                    count: a_count,
+                },
+                SolvedNodeWeight::Producer {
+                    building: b_building,
+                    count: b_count,
+                },
+            ) => a_building == b_building && float_equals(*a_count, *b_count),
             _ => false,
         }
     }
 
-    fn item_value_pair_equals(a: &ItemPerMinute, b: &ItemPerMinute) -> bool {
+    fn item_amount_equals(a: &ItemKeyAmountPair, b: &ItemKeyAmountPair) -> bool {
         a.item == b.item && float_equals(a.amount, b.amount)
     }
 

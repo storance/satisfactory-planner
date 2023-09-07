@@ -1,24 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use thiserror::Error;
 
-use crate::game::{GameDatabase, Item, Recipe};
+use crate::game::{GameDatabase, ItemId, RecipeId};
 use crate::utils::FloatType;
 
-#[derive(Error, Debug)]
-pub enum PlanError {
-    #[error("No recipe exists with the name or key `{0}`")]
-    UnknownRecipe(String),
-    #[error("No item exists with the name or key `{0}`")]
-    UnknownItem(String),
-    #[error("The item `{0}` is an extractable resource and is not allowed in outputs.")]
-    UnexpectedResource(String),
-    #[error("The output for item `{0}` must be greater than zero.")]
-    InvalidOutputAmount(String),
-    #[error("The input for item `{0}` must be greater than or equal to zero.")]
-    InvalidInputAmount(String),
-}
+use super::PlanError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InputLimit {
@@ -28,7 +15,7 @@ pub struct InputLimit {
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum ProductionAmount {
+pub enum OutputAmount {
     Maximize,
     PerMinute(FloatType),
 }
@@ -37,20 +24,20 @@ pub enum ProductionAmount {
 pub struct PlanConfigDefinition {
     #[serde(default)]
     inputs: HashMap<String, FloatType>,
-    outputs: HashMap<String, ProductionAmount>,
+    outputs: HashMap<String, OutputAmount>,
     recipes: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct PlanConfig {
-    pub inputs: HashMap<Arc<Item>, FloatType>,
-    pub outputs: HashMap<Arc<Item>, ProductionAmount>,
+    pub inputs: HashMap<ItemId, FloatType>,
+    pub outputs: HashMap<ItemId, OutputAmount>,
     pub game_db: Arc<GameDatabase>,
-    pub enabled_recipes: Vec<Arc<Recipe>>,
+    pub enabled_recipes: Vec<RecipeId>,
 }
 
 #[allow(dead_code)]
-impl ProductionAmount {
+impl OutputAmount {
     pub fn is_maximize(&self) -> bool {
         matches!(self, Self::Maximize)
     }
@@ -61,7 +48,7 @@ impl ProductionAmount {
 
     pub fn as_per_minute(&self) -> FloatType {
         match self {
-            ProductionAmount::PerMinute(a) => *a,
+            OutputAmount::PerMinute(a) => *a,
             _ => panic!("ProductionAmount was not PerMinute"),
         }
     }
@@ -76,23 +63,24 @@ impl PlanConfig {
         // validate there are no extractable resources in the outputs list
         let mut outputs = HashMap::new();
         for (item_name, value) in config.outputs {
-            let item = game_db
+            let item_id = game_db
                 .find_item(&item_name)
                 .ok_or_else(|| PlanError::UnknownItem(item_name.clone()))?;
+            let item = &game_db[item_id];
             if item.resource {
-                return Err(PlanError::UnexpectedResource(item.name.clone()));
+                return Err(PlanError::UnexpectedResourceInOutputs(item.name.clone()));
             }
 
-            if let ProductionAmount::PerMinute(v) = value {
+            if let OutputAmount::PerMinute(v) = value {
                 if v <= 0.0 {
                     return Err(PlanError::InvalidOutputAmount(item_name.clone()));
                 }
             }
 
-            outputs.insert(item, value);
+            outputs.insert(item_id, value);
         }
 
-        let mut inputs: HashMap<Arc<Item>, FloatType> = game_db.resource_limits.clone();
+        let mut inputs = game_db.resource_limits.clone();
         for (item_name, value) in config.inputs {
             let item = game_db
                 .find_item(&item_name)
@@ -115,14 +103,9 @@ impl PlanConfig {
             }
         }
 
-        let enabled_recipes = game_db
-            .recipes
-            .iter()
-            .filter(|recipe| {
-                config.recipes.contains(&recipe.key) || config.recipes.contains(&recipe.name)
-            })
-            .cloned()
-            .collect();
+        let enabled_recipes = game_db.filter_recipes(|r| {
+            config.recipes.contains(&r.key) || config.recipes.contains(&r.name)
+        });
 
         Ok(PlanConfig {
             inputs,
@@ -132,36 +115,35 @@ impl PlanConfig {
         })
     }
 
-    pub fn find_recipes_by_output(&self, item: &Item) -> Vec<Arc<Recipe>> {
-        if self
-            .game_db
-            .by_product_blacklist
-            .iter()
-            .any(|i| i.as_ref().eq(item))
-        {
+    pub fn find_recipes_by_output(&self, item: ItemId) -> Vec<RecipeId> {
+        let is_blacklisted = self.game_db.by_product_blacklist.contains(&item);
+        if is_blacklisted {
             self.enabled_recipes
                 .iter()
-                .filter(|r| r.is_primary_output(item))
-                .cloned()
+                .filter(|r| self.game_db[**r].is_primary_output(item))
+                .copied()
                 .collect()
         } else {
             self.enabled_recipes
                 .iter()
-                .filter(|r| r.has_output_item(item))
-                .cloned()
+                .filter(|r| self.game_db[**r].has_output_item(item))
+                .copied()
                 .collect()
         }
     }
 
-    pub fn has_input(&self, item: &Arc<Item>) -> bool {
+    #[inline]
+    pub fn has_input(&self, item: ItemId) -> bool {
         self.find_input(item) > 0.0
     }
 
-    pub fn find_input(&self, item: &Arc<Item>) -> FloatType {
-        self.inputs.get(item).copied().unwrap_or(0.0)
+    #[inline]
+    pub fn find_input(&self, item: ItemId) -> FloatType {
+        self.inputs.get(&item).copied().unwrap_or(0.0)
     }
 
-    pub fn find_output(&self, item: &Arc<Item>) -> Option<ProductionAmount> {
-        self.outputs.get(item).copied()
+    #[inline]
+    pub fn find_output(&self, item: ItemId) -> Option<OutputAmount> {
+        self.outputs.get(&item).copied()
     }
 }

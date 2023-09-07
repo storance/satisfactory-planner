@@ -1,147 +1,86 @@
-use crate::game::{Building, Item, Recipe};
+use super::{PlanConfig, PlanError};
+use crate::game::{BuildingId, ItemId, RecipeId};
 use petgraph::{
     stable_graph::{NodeIndex, StableDiGraph},
     Direction::{Incoming, Outgoing},
 };
-use std::{fmt, sync::Arc};
 
-use super::{NodeWeight, PlanConfig, SolverError};
+pub type FullPlanGraph = StableDiGraph<PlanNodeWeight, ItemId>;
 
-pub type FullPlanGraph = StableDiGraph<PlanNodeWeight, Arc<Item>>;
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum PlanNodeWeight {
-    Input(Arc<Item>),
-    Output(Arc<Item>),
-    ByProduct(Arc<Item>),
-    Production(Arc<Recipe>, u32),
-    Producer(Arc<Building>),
+    Input(ItemId),
+    Output(ItemId),
+    ByProduct(ItemId),
+    Production(RecipeId),
+    Producer(BuildingId),
 }
 
 impl PlanNodeWeight {
     #[inline]
-    pub fn new_input(item: Arc<Item>) -> Self {
+    pub fn new_input(item: ItemId) -> Self {
         Self::Input(item)
     }
 
     #[inline]
-    pub fn new_output(item: Arc<Item>) -> Self {
+    pub fn new_output(item: ItemId) -> Self {
         Self::Output(item)
     }
 
     #[inline]
-    pub fn new_by_product(item: Arc<Item>) -> Self {
+    pub fn new_by_product(item: ItemId) -> Self {
         Self::ByProduct(item)
     }
 
     #[inline]
-    pub fn new_production(recipe: Arc<Recipe>) -> Self {
-        Self::Production(recipe, 0)
+    pub fn new_production(recipe: RecipeId) -> Self {
+        Self::Production(recipe)
     }
 
     #[inline]
-    pub fn new_producer(building: Arc<Building>) -> Self {
+    pub fn new_producer(building: BuildingId) -> Self {
         Self::Producer(building)
     }
 
     #[inline]
-    pub fn is_input_for_item(&self, item: &Item) -> bool {
-        matches!(self, Self::Input(i) if i.as_ref() == item)
+    pub fn is_input_for_item(&self, item: ItemId) -> bool {
+        matches!(self, Self::Input(i) if *i == item)
     }
 
     #[inline]
-    pub fn is_output_for_item(&self, item: &Item) -> bool {
-        matches!(self, Self::Output(i) if i.as_ref() == item)
+    pub fn is_output_for_item(&self, item: ItemId) -> bool {
+        matches!(self, Self::Output(i) if *i == item)
     }
 
     #[inline]
-    pub fn is_by_product_for_item(&self, item: &Item) -> bool {
-        matches!(self, Self::ByProduct(i) if i.as_ref() == item)
+    pub fn is_by_product_for_item(&self, item: ItemId) -> bool {
+        matches!(self, Self::ByProduct(i) if *i == item)
     }
 
     #[inline]
-    pub fn is_producer_for_building(&self, building: &Building) -> bool {
-        matches!(self, Self::Producer(b) if b.as_ref() == building)
+    pub fn is_producer_for_building(&self, building: BuildingId) -> bool {
+        matches!(self, Self::Producer(b) if *b == building)
     }
 
     #[inline]
-    pub fn is_production_for_recipe(&self, recipe: &Recipe) -> bool {
-        matches!(self, Self::Production(r, ..) if **r == *recipe)
-    }
-
-    pub fn set_complexity(&mut self, complexity: u32) {
-        if let Self::Production(_, c) = self {
-            *c = complexity
-        }
+    pub fn is_production_for_recipe(&self, recipe: RecipeId) -> bool {
+        matches!(self, Self::Production(r, ..) if *r == recipe)
     }
 }
 
-impl NodeWeight for PlanNodeWeight {
-    #[inline]
-    fn is_input(&self) -> bool {
-        matches!(self, Self::Input(..))
-    }
-
-    #[inline]
-    fn is_input_resource(&self) -> bool {
-        matches!(self, Self::Input(item) if item.resource)
-    }
-
-    #[inline]
-    fn is_output(&self) -> bool {
-        matches!(self, Self::Output(..))
-    }
-
-    #[inline]
-    fn is_by_product(&self) -> bool {
-        matches!(self, Self::ByProduct(..))
-    }
-
-    #[inline]
-    fn is_production(&self) -> bool {
-        matches!(self, Self::Production(..))
-    }
-
-    fn is_producer(&self) -> bool {
-        matches!(self, Self::Producer(..))
-    }
-}
-
-impl fmt::Display for PlanNodeWeight {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Input(item) => {
-                write!(f, "{}", item)
-            }
-            Self::Production(recipe, ..) => {
-                write!(f, "{}\n{}", recipe, recipe.building)
-            }
-            Self::ByProduct(item, ..) => {
-                write!(f, "{}", item)
-            }
-            Self::Output(item) => {
-                write!(f, "{}", item)
-            }
-            Self::Producer(building) => {
-                write!(f, "{}", building.name())
-            }
-        }
-    }
-}
-
-pub fn build_full_plan(config: &PlanConfig) -> Result<FullPlanGraph, SolverError> {
+pub fn build_full_plan(config: &PlanConfig) -> Result<FullPlanGraph, PlanError> {
     let mut graph = FullPlanGraph::new();
 
     config.outputs.iter().for_each(|(item, _)| {
-        let idx = graph.add_node(PlanNodeWeight::new_output(Arc::clone(item)));
-        create_children(config, &mut graph, idx, Arc::clone(item));
+        let idx = graph.add_node(PlanNodeWeight::new_output(*item));
+        create_children(config, &mut graph, idx, *item);
     });
 
     for item in config.outputs.keys() {
-        let idx = find_output_node(&graph, item).unwrap();
+        let idx = find_output_node(&graph, *item).unwrap();
         let mut visited = Vec::new();
         if prune_impossible(config, &mut graph, idx, &mut visited) {
-            return Err(SolverError::MissingInputsOrRecipes);
+            return Err(PlanError::UnsolvablePlan);
         }
     }
 
@@ -152,70 +91,56 @@ fn create_children(
     config: &PlanConfig,
     graph: &mut FullPlanGraph,
     parent_idx: NodeIndex,
-    item: Arc<Item>,
-) -> u32 {
+    item_id: ItemId,
+) {
+    let item = &config.game_db[item_id];
     if item.resource {
-        create_input_node(graph, parent_idx, item)
+        create_input_node(graph, parent_idx, item_id)
     } else {
-        create_production_by_product(config, graph, parent_idx, item)
+        create_production_by_product(config, graph, parent_idx, item_id)
     }
 }
 
-fn create_input_node(graph: &mut FullPlanGraph, parent_idx: NodeIndex, item: Arc<Item>) -> u32 {
-    let idx = find_input_node(graph, &item)
-        .unwrap_or_else(|| graph.add_node(PlanNodeWeight::new_input(Arc::clone(&item))));
+fn create_input_node(graph: &mut FullPlanGraph, parent_idx: NodeIndex, item: ItemId) {
+    let idx = find_input_node(graph, item)
+        .unwrap_or_else(|| graph.add_node(PlanNodeWeight::new_input(item)));
     graph.add_edge(idx, parent_idx, item);
-    0
 }
 
 pub fn create_production_by_product(
     config: &PlanConfig,
     graph: &mut FullPlanGraph,
     parent_idx: NodeIndex,
-    item: Arc<Item>,
-) -> u32 {
-    let idx = match find_by_product_node(graph, &item) {
+    item: ItemId,
+) {
+    let idx = match find_by_product_node(graph, item) {
         Some(idx) => idx,
-        None => graph.add_node(PlanNodeWeight::new_by_product(Arc::clone(&item))),
+        None => graph.add_node(PlanNodeWeight::new_by_product(item)),
     };
 
-    let mut complexity = u32::MAX;
-    for recipe in config.find_recipes_by_output(&item) {
-        complexity = complexity.min(create_production_node(
-            config,
-            graph,
-            idx,
-            recipe,
-            Arc::clone(&item),
-        ));
+    for recipe in config.find_recipes_by_output(item) {
+        create_production_node(config, graph, idx, recipe, item);
     }
 
-    for building in config.game_db.find_item_producers(&item) {
-        complexity = complexity.min(create_producer_node(
-            config,
-            graph,
-            parent_idx,
-            building,
-            Arc::clone(&item),
-        ));
+    for building in config.game_db.find_item_producers(item) {
+        create_producer_node(config, graph, parent_idx, building, item);
     }
 
-    if config.has_input(&item) {
-        create_input_node(graph, idx, Arc::clone(&item));
+    if config.has_input(item) {
+        create_input_node(graph, idx, item);
     }
 
     graph.update_edge(idx, parent_idx, item);
-    complexity
 }
 
 fn create_producer_node(
     _config: &PlanConfig,
     graph: &mut FullPlanGraph,
     parent_idx: NodeIndex,
-    building: Arc<Building>,
-    item: Arc<Item>,
+    building: BuildingId,
+    item: ItemId,
 ) -> u32 {
-    let idx = find_producer_node(graph, &building)
+    let idx = find_producer_node(graph, building)
         .unwrap_or_else(|| graph.add_node(PlanNodeWeight::new_producer(building)));
     graph.add_edge(idx, parent_idx, item);
     1
@@ -225,44 +150,34 @@ fn create_production_node(
     config: &PlanConfig,
     graph: &mut FullPlanGraph,
     parent_idx: NodeIndex,
-    recipe: Arc<Recipe>,
-    item: Arc<Item>,
-) -> u32 {
-    if let Some(existing_idx) = find_production_node(graph, &recipe) {
-        if let PlanNodeWeight::Production(_, complexity) = &graph[existing_idx] {
-            *complexity
-        } else {
-            0
-        }
-    } else {
-        let idx = graph.add_node(PlanNodeWeight::new_production(Arc::clone(&recipe)));
+    recipe_id: RecipeId,
+    item_id: ItemId,
+) {
+    if find_production_node(graph, recipe_id).is_none() {
+        let idx = graph.add_node(PlanNodeWeight::new_production(recipe_id));
 
+        let recipe = &config.game_db[recipe_id];
         for output in &recipe.outputs {
-            if output.item != item {
-                create_partial_by_product_node(graph, idx, Arc::clone(&output.item));
+            if output.item != item_id {
+                create_partial_by_product_node(graph, idx, output.item);
             }
         }
 
-        let mut complexity = 0;
         for input in &recipe.inputs {
-            complexity =
-                complexity.max(create_children(config, graph, idx, Arc::clone(&input.item)));
+            create_children(config, graph, idx, input.item);
         }
-        complexity += 1;
-        graph[idx].set_complexity(complexity);
-        graph.add_edge(idx, parent_idx, item);
-        complexity
+        graph.add_edge(idx, parent_idx, item_id);
     }
 }
 
 fn create_partial_by_product_node(
     graph: &mut FullPlanGraph,
     child_idx: NodeIndex,
-    item: Arc<Item>,
+    item: ItemId,
 ) -> NodeIndex {
-    let idx = match find_by_product_node(graph, &item) {
+    let idx = match find_by_product_node(graph, item) {
         Some(idx) => idx,
-        None => graph.add_node(PlanNodeWeight::new_by_product(Arc::clone(&item))),
+        None => graph.add_node(PlanNodeWeight::new_by_product(item)),
     };
     graph.update_edge(child_idx, idx, item);
     idx
@@ -292,8 +207,10 @@ fn prune_impossible(
             }
             all_deleted
         }
-        PlanNodeWeight::Production(recipe, ..) => {
+        PlanNodeWeight::Production(recipe_id, ..) => {
+            let recipe = &config.game_db[*recipe_id];
             let total_inputs = recipe.inputs.len();
+
             let mut child_walker = graph.neighbors_directed(idx, Incoming).detach();
             let mut total_children = 0;
             while let Some(child_idx) = child_walker.next_node(graph) {
@@ -310,7 +227,7 @@ fn prune_impossible(
             }
         }
         PlanNodeWeight::Input(item) => {
-            if config.find_input(item) == 0.0 {
+            if config.find_input(*item) == 0.0 {
                 graph.remove_node(idx);
                 true
             } else {
@@ -354,35 +271,35 @@ fn prune(graph: &mut FullPlanGraph, idx: NodeIndex) {
 }
 
 #[inline]
-fn find_output_node(graph: &FullPlanGraph, item: &Item) -> Option<NodeIndex> {
+fn find_output_node(graph: &FullPlanGraph, item: ItemId) -> Option<NodeIndex> {
     graph
         .node_indices()
         .find(|i| graph[*i].is_output_for_item(item))
 }
 
 #[inline]
-fn find_input_node(graph: &FullPlanGraph, item: &Item) -> Option<NodeIndex> {
+fn find_input_node(graph: &FullPlanGraph, item: ItemId) -> Option<NodeIndex> {
     graph
         .node_indices()
         .find(|i| graph[*i].is_input_for_item(item))
 }
 
 #[inline]
-fn find_production_node(graph: &FullPlanGraph, recipe: &Recipe) -> Option<NodeIndex> {
+fn find_production_node(graph: &FullPlanGraph, recipe: RecipeId) -> Option<NodeIndex> {
     graph
         .node_indices()
         .find(|i| graph[*i].is_production_for_recipe(recipe))
 }
 
 #[inline]
-fn find_producer_node(graph: &FullPlanGraph, building: &Building) -> Option<NodeIndex> {
+fn find_producer_node(graph: &FullPlanGraph, building: BuildingId) -> Option<NodeIndex> {
     graph
         .node_indices()
         .find(|i| graph[*i].is_producer_for_building(building))
 }
 
 #[inline]
-fn find_by_product_node(graph: &FullPlanGraph, item: &Item) -> Option<NodeIndex> {
+fn find_by_product_node(graph: &FullPlanGraph, item: ItemId) -> Option<NodeIndex> {
     graph
         .node_indices()
         .find(|i| graph[*i].is_by_product_for_item(item))

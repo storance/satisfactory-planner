@@ -5,19 +5,17 @@ pub mod recipe;
 
 use recipe::RecipeDefinition;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs::File, path::Path, sync::Arc};
+use std::{collections::HashMap, fs::File, ops::Index, path::Path};
 use thiserror::Error;
 
-pub use building::{Building, Dimensions, PowerConsumption};
+pub use building::{Building, Dimensions, PowerConsumption, Fuel, ItemProducer, PowerGenerator, ResourceExtractor, ResourceWell};
 pub use item::{Item, ItemState};
-pub use item_value_pairs::ItemPerMinute;
+pub use item_value_pairs::{ItemPerMinute, ItemKeyAmountPair};
 pub use recipe::Recipe;
+use self::building::BuildingDefinition;
 
 use crate::utils::FloatType;
 
-use self::building::{
-    BuildingDefinition, Fuel, ItemProducer, PowerGenerator, ResourceExtractor, ResourceWell,
-};
 
 #[derive(Error, Debug, Eq, PartialEq)]
 pub enum GameDatabaseError {
@@ -37,16 +35,19 @@ pub enum GameDatabaseError {
     NotAManufacturer(String, String),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ItemAmountDefinition {
-    pub item: String,
-    pub amount: FloatType,
-}
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct ItemId(usize);
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct RecipeId(usize);
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct BuildingId(usize);
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GameDatabaseDefinition {
     by_product_blacklist: Vec<String>,
-    items: Vec<Arc<Item>>,
+    items: Vec<Item>,
     buildings: Vec<BuildingDefinition>,
     recipes: Vec<RecipeDefinition>,
     resource_limits: HashMap<String, FloatType>,
@@ -54,11 +55,11 @@ pub struct GameDatabaseDefinition {
 
 #[derive(Debug, Clone)]
 pub struct GameDatabase {
-    pub by_product_blacklist: Vec<Arc<Item>>,
-    pub items: Vec<Arc<Item>>,
-    pub buildings: Vec<Arc<Building>>,
-    pub recipes: Vec<Arc<Recipe>>,
-    pub resource_limits: HashMap<Arc<Item>, FloatType>,
+    pub by_product_blacklist: Vec<ItemId>,
+    pub items: Vec<Item>,
+    pub buildings: Vec<Building>,
+    pub recipes: Vec<Recipe>,
+    pub resource_limits: HashMap<ItemId, FloatType>,
 }
 
 #[allow(dead_code)]
@@ -81,12 +82,14 @@ impl GameDatabase {
         // validate the items in resource_limits
         let mut resource_limits = HashMap::new();
         for (item_key, limit) in &definition.resource_limits {
-            let item = Self::find_item_by_key(item_key, &definition.items)?;
+            let item_id = Self::find_item_by_key(item_key, &definition.items)?;
+            let item = &definition.items[item_id.0];
+
             if !item.resource {
                 return Err(GameDatabaseError::ItemNotAResource(item.key.clone()));
             }
 
-            resource_limits.insert(item, *limit);
+            resource_limits.insert(item_id, *limit);
         }
 
         let mut buildings = Vec::new();
@@ -99,7 +102,7 @@ impl GameDatabase {
 
         let mut recipes = Vec::with_capacity(definition.recipes.len());
         for recipe in definition.recipes {
-            if recipes.iter().any(|r: &Arc<Recipe>| r.key == recipe.key) {
+            if recipes.iter().any(|r: &Recipe| r.key == recipe.key) {
                 return Err(GameDatabaseError::DuplicateRecipeKey(recipe.key.clone()));
             }
 
@@ -117,9 +120,9 @@ impl GameDatabase {
 
     fn convert_building(
         building: BuildingDefinition,
-        items: &[Arc<Item>],
-    ) -> Result<Arc<Building>, GameDatabaseError> {
-        Ok(Arc::new(match building {
+        items: &[Item],
+    ) -> Result<Building, GameDatabaseError> {
+        Ok(match building {
             BuildingDefinition::Manufacturer(m) => Building::Manufacturer(m),
             BuildingDefinition::PowerGenerator(pg) => {
                 let mut fuels = Vec::new();
@@ -189,15 +192,16 @@ impl GameDatabase {
                     dimensions: rw.dimensions,
                 })
             }
-        }))
+        })
     }
 
     fn convert_recipe(
         recipe: RecipeDefinition,
-        buildings: &[Arc<Building>],
-        items: &[Arc<Item>],
-    ) -> Result<Arc<Recipe>, GameDatabaseError> {
-        let building = Self::find_building_by_key(&recipe.building, buildings)?;
+        buildings: &[Building],
+        items: &[Item],
+    ) -> Result<Recipe, GameDatabaseError> {
+        let building_id = Self::find_building_by_key(&recipe.building, buildings)?;
+        let building = &buildings[building_id.0];
 
         if !building.is_manufacturer() {
             return Err(GameDatabaseError::NotAManufacturer(
@@ -227,7 +231,7 @@ impl GameDatabase {
             .map(|o| Self::convert_item_amount(o, crafts_per_min, items))
             .collect::<Result<Vec<ItemPerMinute>, GameDatabaseError>>()?;
 
-        Ok(Arc::new(Recipe {
+        Ok(Recipe {
             key: recipe.key,
             name: recipe.name,
             alternate: recipe.alternate,
@@ -235,15 +239,15 @@ impl GameDatabase {
             outputs,
             craft_time_secs: recipe.craft_time_secs,
             events: recipe.events,
-            building,
+            building: building_id,
             power: recipe.power,
-        }))
+        })
     }
 
     pub fn convert_item_amount(
-        item_amount: &ItemAmountDefinition,
+        item_amount: &ItemKeyAmountPair,
         cycles_per_min: FloatType,
-        items: &[Arc<Item>],
+        items: &[Item],
     ) -> Result<ItemPerMinute, GameDatabaseError> {
         Ok(ItemPerMinute::new(
             Self::find_item_by_key(&item_amount.item, items)?,
@@ -252,65 +256,90 @@ impl GameDatabase {
     }
 
     #[inline]
-    fn find_item_by_key(
-        item_key: &str,
-        items: &[Arc<Item>],
-    ) -> Result<Arc<Item>, GameDatabaseError> {
+    fn find_item_by_key(item_key: &str, items: &[Item]) -> Result<ItemId, GameDatabaseError> {
         items
             .iter()
-            .find(|i| i.key == item_key)
-            .cloned()
+            .position(|i| i.key == item_key)
+            .map(|i| ItemId(i))
             .ok_or(GameDatabaseError::UnknownItemKey(item_key.into()))
     }
 
     #[inline]
     fn find_building_by_key(
         building_key: &str,
-        buildings: &[Arc<Building>],
-    ) -> Result<Arc<Building>, GameDatabaseError> {
+        buildings: &[Building],
+    ) -> Result<BuildingId, GameDatabaseError> {
         buildings
             .iter()
-            .find(|b| b.key() == building_key)
-            .cloned()
+            .position(|b| b.key() == building_key)
+            .map(|i| BuildingId(i))
             .ok_or(GameDatabaseError::UnknownBuildingKey(building_key.into()))
     }
 
     #[inline]
-    pub fn find_recipe(&self, name_or_key: &str) -> Option<Arc<Recipe>> {
+    pub fn find_recipe(&self, name_or_key: &str) -> Option<&Recipe> {
         self.recipes
             .iter()
             .find(|r| r.name.eq_ignore_ascii_case(name_or_key) || r.key == name_or_key)
-            .cloned()
     }
 
     #[inline]
-    pub fn find_item(&self, name_or_key: &str) -> Option<Arc<Item>> {
+    pub fn find_item(&self, name_or_key: &str) -> Option<ItemId> {
         self.items
             .iter()
-            .find(|i| i.name.eq_ignore_ascii_case(name_or_key) || i.key == name_or_key)
-            .cloned()
+            .position(|i| i.name.eq_ignore_ascii_case(name_or_key) || i.key == name_or_key)
+            .map(|i| ItemId(i))
     }
 
     #[inline]
-    pub fn find_building(&self, name_or_key: &str) -> Option<Arc<Building>> {
+    pub fn find_item_producers(&self, item: ItemId) -> Vec<BuildingId> {
         self.buildings
             .iter()
-            .find(|b| b.name().eq_ignore_ascii_case(name_or_key) || b.key() == name_or_key)
-            .cloned()
+            .enumerate()
+            .filter(|(_, b)| b.is_item_producer() && b.as_item_producer().output.item == item)
+            .map(|(i, _)| BuildingId(i))
+            .collect()
     }
 
-    #[inline]
-    pub fn find_item_producers(&self, item: &Item) -> Vec<Arc<Building>> {
-        self.buildings
+    pub fn filter_recipes<F>(&self, predicate: F) -> Vec<RecipeId>
+    where
+        F: Fn(&&Recipe) -> bool,
+    {
+        self.recipes
             .iter()
-            .filter(|b| b.is_item_producer() && *b.as_item_producer().output.item == *item)
-            .cloned()
+            .enumerate()
+            .filter(|(_, r)| predicate(r))
+            .map(|(i, _)| RecipeId(i))
             .collect()
     }
 
     #[inline]
-    pub fn get_resource_limit(&self, item: &Arc<Item>) -> FloatType {
-        self.resource_limits.get(item).copied().unwrap_or(0.0)
+    pub fn get_resource_limit(&self, item: ItemId) -> FloatType {
+        self.resource_limits.get(&item).copied().unwrap_or(0.0)
+    }
+}
+
+impl Index<ItemId> for GameDatabase {
+    type Output = Item;
+
+    fn index(&self, index: ItemId) -> &Self::Output {
+        &self.items[index.0]
+    }
+}
+
+impl Index<BuildingId> for GameDatabase {
+    type Output = Building;
+
+    fn index(&self, index: BuildingId) -> &Self::Output {
+        &self.buildings[index.0]
+    }
+}
+
+impl Index<RecipeId> for GameDatabase {
+    type Output = Recipe;
+
+    fn index(&self, index: RecipeId) -> &Self::Output {
+        &self.recipes[index.0]
     }
 }
 

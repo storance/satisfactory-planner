@@ -2,13 +2,12 @@ use core::panic;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
-    hash::{Hash, Hasher},
-    sync::Arc,
+    hash::{Hash, Hasher}
 };
 
 use crate::utils::FloatType;
 
-use super::{Item, ItemAmountDefinition, ItemPerMinute, Recipe};
+use super::{ItemPerMinute, Recipe, ItemId, item_value_pairs::ItemKeyAmountPair};
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -41,11 +40,11 @@ pub struct Manufacturer {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct FuelDefinition {
-    pub fuel: ItemAmountDefinition,
+    pub fuel: ItemKeyAmountPair,
     #[serde(default)]
-    pub supplemental: Option<ItemAmountDefinition>,
+    pub supplemental: Option<ItemKeyAmountPair>,
     #[serde(default)]
-    pub by_product: Option<ItemAmountDefinition>,
+    pub by_product: Option<ItemKeyAmountPair>,
     pub burn_time_secs: FloatType,
 }
 
@@ -94,7 +93,7 @@ pub struct ResourceExtractor {
     pub name: String,
     pub power_consumption: PowerConsumption,
     pub extraction_rate: FloatType,
-    pub allowed_resources: Vec<Arc<Item>>,
+    pub allowed_resources: Vec<ItemId>,
     pub extractor_type: Option<String>,
     pub dimensions: Option<Dimensions>,
 }
@@ -124,7 +123,7 @@ pub struct ResourceWell {
     pub key: String,
     pub name: String,
     pub power_consumption: PowerConsumption,
-    pub allowed_resources: Vec<Arc<Item>>,
+    pub allowed_resources: Vec<ItemId>,
     pub satellite_buildings: Vec<ResourceWellExtractor>,
     pub extractor_type: Option<String>,
     pub dimensions: Option<Dimensions>,
@@ -136,7 +135,7 @@ pub struct ItemProducerDefinition {
     pub name: String,
     pub power_consumption: PowerConsumption,
     pub craft_time_secs: FloatType,
-    pub output: ItemAmountDefinition,
+    pub output: ItemKeyAmountPair,
     pub dimensions: Option<Dimensions>,
 }
 

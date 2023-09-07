@@ -1,4 +1,5 @@
-use std::fmt;
+use actix_web::{ResponseError, http::header::ContentType, HttpResponse};
+use serde::{Serialize, Deserialize};
 use thiserror::Error;
 
 mod config;
@@ -8,28 +9,57 @@ mod solver;
 
 pub use config::*;
 pub use full_plan_graph::*;
-use good_lp::ResolutionError;
 pub use solved_graph::*;
 pub use solver::*;
 
-
-
 #[derive(Error, Debug)]
-pub enum SolverError {
-    #[error("Unable to solve the given factory factory plan due to missing inputs or recipes.")]
-    MissingInputsOrRecipes,
-    #[error("Unable to solve the given factory factory plan due to insufficient resources.")]
-    InsufficientResources(#[from] ResolutionError)
+pub enum PlanError {
+    #[error("No recipe exists with the name or key `{0}`")]
+    UnknownRecipe(String),
+    #[error("No item exists with the name or key `{0}`")]
+    UnknownItem(String),
+    #[error("The item `{0}` is an extractable resource and is not allowed in outputs.")]
+    UnexpectedResourceInOutputs(String),
+    #[error("The output for item `{0}` must be greater than zero.")]
+    InvalidOutputAmount(String),
+    #[error("The input for item `{0}` must be greater than or equal to zero.")]
+    InvalidInputAmount(String),
+    #[error("Unable to solve the given factory plan.  This can be caused by missing inputs, insufficient resources, or disabled recipes.")]
+    UnsolvablePlan
 }
 
-pub trait NodeWeight
-where
-    Self: fmt::Display,
-{
-    fn is_input(&self) -> bool;
-    fn is_input_resource(&self) -> bool;
-    fn is_output(&self) -> bool;
-    fn is_by_product(&self) -> bool;
-    fn is_production(&self) -> bool;
-    fn is_producer(&self) -> bool;
+impl PlanError {
+    pub fn error_code(&self) -> String {
+        match self {
+            PlanError::UnknownRecipe(_) => "UnknownRecipe",
+            PlanError::UnknownItem(_) => "UnknownItem",
+            PlanError::UnexpectedResourceInOutputs(_) => "UnexpectedResourceInOutputs",
+            PlanError::InvalidOutputAmount(_) => "InvalidOutputAmount",
+            PlanError::InvalidInputAmount(_) => "InvalidInputAmount",
+            PlanError::UnsolvablePlan => "UnsolvablePlan",
+        }.into()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ErrorResponse {
+    pub error_code: String,
+    pub message: String
+}
+
+impl ResponseError for PlanError {
+    fn status_code(&self) -> actix_web::http::StatusCode {
+        actix_web::http::StatusCode::BAD_REQUEST
+    }
+
+    fn error_response(&self) -> HttpResponse {
+        let error_response = ErrorResponse {
+            error_code: self.error_code(),
+            message: self.to_string()
+        };
+
+        HttpResponse::build(self.status_code())
+            .insert_header(ContentType::html())
+            .body(serde_json::to_string(&error_response).unwrap())
+    }
 }
