@@ -1,20 +1,20 @@
+use super::Item;
 use crate::utils::{clamp_to_zero, round, FloatType, EPSILON};
+use serde::ser::{Serialize, SerializeStruct};
 use std::cmp::Ordering;
 use std::fmt;
 use std::ops::{Add, AddAssign, Neg, Sub, SubAssign};
-use std::rc::Rc;
-
-use super::Item;
+use std::sync::Arc;
 
 #[derive(Clone, PartialEq)]
 pub struct ItemPerMinute {
-    pub item: Rc<Item>,
+    pub item: Arc<Item>,
     pub amount: FloatType,
 }
 
 impl ItemPerMinute {
     #[inline]
-    pub fn new(item: Rc<Item>, amount: FloatType) -> Self {
+    pub fn new(item: Arc<Item>, amount: FloatType) -> Self {
         Self { item, amount }
     }
 
@@ -24,21 +24,21 @@ impl ItemPerMinute {
 
     pub fn with_value(&self, amount: FloatType) -> Self {
         Self {
-            item: Rc::clone(&self.item),
+            item: Arc::clone(&self.item),
             amount,
         }
     }
 
     pub fn clamp(&self, min_value: FloatType, max_value: FloatType) -> Self {
         Self {
-            item: Rc::clone(&self.item),
+            item: Arc::clone(&self.item),
             amount: self.amount.min(max_value).max(min_value),
         }
     }
 
     pub fn mul(&self, value: FloatType) -> Self {
         Self {
-            item: Rc::clone(&self.item),
+            item: Arc::clone(&self.item),
             amount: clamp_to_zero(self.amount * value),
         }
     }
@@ -74,7 +74,7 @@ impl Neg for ItemPerMinute {
 
     fn neg(self) -> Self::Output {
         Self {
-            item: Rc::clone(&self.item),
+            item: Arc::clone(&self.item),
             amount: -self.amount,
         }
     }
@@ -96,7 +96,7 @@ impl Add<FloatType> for &ItemPerMinute {
 
     fn add(self, rhs: FloatType) -> Self::Output {
         ItemPerMinute {
-            item: Rc::clone(&self.item),
+            item: Arc::clone(&self.item),
             amount: self.amount + rhs,
         }
     }
@@ -120,7 +120,7 @@ impl Add<ItemPerMinute> for &ItemPerMinute {
     fn add(self, rhs: ItemPerMinute) -> Self::Output {
         assert!(self.item == rhs.item);
         ItemPerMinute {
-            item: Rc::clone(&self.item),
+            item: Arc::clone(&self.item),
             amount: self.amount + rhs.amount,
         }
     }
@@ -144,7 +144,7 @@ impl Add<&ItemPerMinute> for &ItemPerMinute {
     fn add(self, rhs: &ItemPerMinute) -> Self::Output {
         assert!(self.item == rhs.item);
         ItemPerMinute {
-            item: Rc::clone(&self.item),
+            item: Arc::clone(&self.item),
             amount: self.amount + rhs.amount,
         }
     }
@@ -172,7 +172,7 @@ impl Sub<FloatType> for &ItemPerMinute {
 
     fn sub(self, rhs: FloatType) -> Self::Output {
         ItemPerMinute {
-            item: Rc::clone(&self.item),
+            item: Arc::clone(&self.item),
             amount: self.amount - rhs,
         }
     }
@@ -196,7 +196,7 @@ impl Sub<ItemPerMinute> for &ItemPerMinute {
     fn sub(self, rhs: ItemPerMinute) -> Self::Output {
         assert!(self.item == rhs.item);
         ItemPerMinute {
-            item: Rc::clone(&self.item),
+            item: Arc::clone(&self.item),
             amount: self.amount - rhs.amount,
         }
     }
@@ -220,7 +220,7 @@ impl Sub<&ItemPerMinute> for &ItemPerMinute {
     fn sub(self, rhs: &ItemPerMinute) -> Self::Output {
         assert!(self.item == rhs.item);
         ItemPerMinute {
-            item: Rc::clone(&self.item),
+            item: Arc::clone(&self.item),
             amount: self.amount - rhs.amount,
         }
     }
@@ -229,6 +229,18 @@ impl Sub<&ItemPerMinute> for &ItemPerMinute {
 impl SubAssign<FloatType> for ItemPerMinute {
     fn sub_assign(&mut self, rhs: FloatType) {
         self.amount -= rhs;
+    }
+}
+
+impl Serialize for ItemPerMinute {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut ipm = serializer.serialize_struct("ItemPerMinute", 2)?;
+        ipm.serialize_field("item", &self.item.name)?;
+        ipm.serialize_field("amount", &self.amount)?;
+        ipm.end()
     }
 }
 

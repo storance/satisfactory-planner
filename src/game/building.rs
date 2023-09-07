@@ -3,12 +3,12 @@ use serde::{Deserialize, Serialize};
 use std::{
     fmt,
     hash::{Hash, Hasher},
-    rc::Rc,
+    sync::Arc,
 };
 
 use crate::utils::FloatType;
 
-use super::{ItemAmountDefinition, Item, ItemPerMinute, Recipe};
+use super::{Item, ItemAmountDefinition, ItemPerMinute, Recipe};
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -94,7 +94,7 @@ pub struct ResourceExtractor {
     pub name: String,
     pub power_consumption: PowerConsumption,
     pub extraction_rate: FloatType,
-    pub allowed_resources: Vec<Rc<Item>>,
+    pub allowed_resources: Vec<Arc<Item>>,
     pub extractor_type: Option<String>,
     pub dimensions: Option<Dimensions>,
 }
@@ -124,7 +124,7 @@ pub struct ResourceWell {
     pub key: String,
     pub name: String,
     pub power_consumption: PowerConsumption,
-    pub allowed_resources: Vec<Rc<Item>>,
+    pub allowed_resources: Vec<Arc<Item>>,
     pub satellite_buildings: Vec<ResourceWellExtractor>,
     pub extractor_type: Option<String>,
     pub dimensions: Option<Dimensions>,

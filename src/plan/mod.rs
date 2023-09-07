@@ -1,6 +1,5 @@
-use petgraph::dot::Dot;
-use petgraph::stable_graph::StableDiGraph;
 use std::fmt;
+use thiserror::Error;
 
 mod config;
 mod full_plan_graph;
@@ -9,10 +8,19 @@ mod solver;
 
 pub use config::*;
 pub use full_plan_graph::*;
+use good_lp::ResolutionError;
 pub use solved_graph::*;
 pub use solver::*;
 
-pub const UNSOLVABLE_PLAN_ERROR: &str = "Unable to solve the given factory plan.";
+
+
+#[derive(Error, Debug)]
+pub enum SolverError {
+    #[error("Unable to solve the given factory factory plan due to missing inputs or recipes.")]
+    MissingInputsOrRecipes,
+    #[error("Unable to solve the given factory factory plan due to insufficient resources.")]
+    InsufficientResources(#[from] ResolutionError)
+}
 
 pub trait NodeWeight
 where
@@ -24,34 +32,4 @@ where
     fn is_by_product(&self) -> bool;
     fn is_production(&self) -> bool;
     fn is_producer(&self) -> bool;
-}
-
-pub fn print_graph<N: NodeWeight, E: fmt::Display>(graph: &StableDiGraph<N, E>) {
-    println!(
-        "{}",
-        format!(
-            "{}",
-            Dot::with_attr_getters(&graph, &[], &|_, _| String::new(), &|_, n| {
-                let color = if n.1.is_input_resource() {
-                    "lightslategray"
-                } else if n.1.is_input() {
-                    "peru"
-                } else if n.1.is_output() {
-                    "mediumseagreen"
-                } else if n.1.is_by_product() {
-                    "cornflowerblue"
-                } else if n.1.is_production() {
-                    "darkorange"
-                } else {
-                    "white"
-                };
-
-                format!(
-                    "style=\"solid,filled\" shape=\"box\" fontcolor=\"white\" color=\"{}\"",
-                    color
-                )
-            })
-        )
-        .replace("\\l", "\\n")
-    );
 }

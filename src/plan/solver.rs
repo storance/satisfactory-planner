@@ -1,3 +1,9 @@
+use super::{
+    full_plan_graph::{build_full_plan, PlanNodeWeight},
+    solved_graph::{copy_solution, SolvedGraph},
+    PlanConfig, SolverError,
+};
+use crate::game::Building;
 use good_lp::{minilp, variable, variables, Expression, SolverModel, Variable};
 use petgraph::{
     stable_graph::{EdgeIndex, NodeIndex},
@@ -5,14 +11,8 @@ use petgraph::{
     Direction::{Incoming, Outgoing},
 };
 use std::collections::HashMap;
-use crate::game::Building;
-use super::{
-    full_plan_graph::{build_full_plan, PlanNodeWeight},
-    solved_graph::{copy_solution, SolvedGraph},
-    PlanConfig,
-};
 
-pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
+pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, SolverError> {
     let full_graph = build_full_plan(config)?;
 
     let mut node_variables: HashMap<NodeIndex, Variable> = HashMap::new();
@@ -161,15 +161,11 @@ pub fn solve(config: &PlanConfig) -> Result<SolvedGraph, anyhow::Error> {
 #[cfg(test)]
 mod tests {
     use petgraph::visit::IntoEdgeReferences;
-    use std::rc::Rc;
-
+    use std::sync::Arc;
 
     use super::*;
     use crate::{
-        game::{
-            test::{get_game_db_with_base_recipes_plus, get_test_game_db_with_recipes},
-            ItemPerMinute, Item,
-        },
+        game::{test::get_test_game_db, Item, ItemPerMinute},
         plan::{solved_graph::SolvedNodeWeight, ProductionAmount},
         utils::{round, FloatType, EPSILON},
     };
@@ -267,11 +263,12 @@ mod tests {
             PlanConfig {
                 game_db: $game_db:ident,
                 inputs: {$($input_item:literal : $input_amount:literal),*},
-                production: {$($item:literal : $amount:literal),+}
+                outputs: {$($item:literal : $amount:literal),+},
+                enabled_recipes: $enabled_recipes:ident
             }
         ) => {
             {
-                let mut inputs: HashMap<Rc<Item>, FloatType> = HashMap::new();
+                let mut inputs = $game_db.resource_limits.clone();
                 $(
                     inputs.insert(
                         $game_db.find_item($input_item).unwrap_or_else(||
@@ -279,14 +276,19 @@ mod tests {
                         $input_amount);
                 )*
 
-                let mut production: HashMap<Rc<Item>, ProductionAmount> = HashMap::new();
-                $(production.insert(
+                let mut outputs: HashMap<Arc<Item>, ProductionAmount> = HashMap::new();
+                $(outputs.insert(
                     $game_db.find_item($item).unwrap_or_else(||
                         panic!("Item {} does not exist", $item)),
                         plan_config!(@amount $amount));
                 )*
 
-                PlanConfig::with_inputs(inputs, production, $game_db)
+                PlanConfig {
+                    inputs,
+                    outputs,
+                    game_db: $game_db,
+                    enabled_recipes: $enabled_recipes
+                }
             }
         };
         (
@@ -304,7 +306,13 @@ mod tests {
 
     #[test]
     fn test_iron_ingot_base_recipes() {
-        let game_db = get_test_game_db_with_recipes(&["Recipe_IngotIron_C"]);
+        let game_db = Arc::new(get_test_game_db());
+        let enabled_recipes: Vec<Arc<crate::game::Recipe>> = game_db
+            .recipes
+            .iter()
+            .filter(|r| r.key == "Recipe_IngotIron_C")
+            .cloned()
+            .collect();
 
         let expected_graph = graph_builder!(
             Graph(game_db) {
@@ -324,9 +332,10 @@ mod tests {
             PlanConfig {
                 game_db: game_db,
                 inputs: {},
-                production: {
+                outputs: {
                     "Desc_IronIngot_C": 30.0
-                }
+                },
+                enabled_recipes: enabled_recipes
             }
         );
 
@@ -338,10 +347,15 @@ mod tests {
 
     #[test]
     fn test_iron_ingot_with_pure_ingot_recipe() {
-        let game_db = get_test_game_db_with_recipes(&[
-            "Recipe_IngotIron_C",
-            "Recipe_Alternate_PureIronIngot_C",
-        ]);
+        let game_db = Arc::new(get_test_game_db());
+        let enabled_recipes: Vec<Arc<crate::game::Recipe>> = game_db
+            .recipes
+            .iter()
+            .filter(|r| {
+                r.key == "Recipe_IngotIron_C" || r.key == "Recipe_Alternate_PureIronIngot_C"
+            })
+            .cloned()
+            .collect();
 
         let expected_graph = graph_builder!(
             Graph(game_db) {
@@ -363,9 +377,10 @@ mod tests {
             PlanConfig {
                 game_db: game_db,
                 inputs: {},
-                production: {
+                outputs: {
                     "Desc_IronIngot_C": 65.0
-                }
+                },
+                enabled_recipes: enabled_recipes
             }
         );
 
@@ -377,11 +392,13 @@ mod tests {
 
     #[test]
     fn test_iron_rods_and_plates() {
-        let game_db = get_test_game_db_with_recipes(&[
-            "Recipe_IngotIron_C",
-            "Recipe_IronPlate_C",
-            "Recipe_IronRod_C",
-        ]);
+        let game_db = Arc::new(get_test_game_db());
+        let enabled_recipes: Vec<Arc<crate::game::Recipe>> = game_db
+            .recipes
+            .iter()
+            .filter(|r| !r.alternate)
+            .cloned()
+            .collect();
 
         let expected_graph = graph_builder!(
             Graph(game_db) {
@@ -407,10 +424,11 @@ mod tests {
             PlanConfig {
                 game_db: game_db,
                 inputs: {},
-                production: {
+                outputs: {
                     "Desc_IronPlate_C": 60.0,
                     "Desc_IronRod_C": 30.0
-                }
+                },
+                enabled_recipes: enabled_recipes
             }
         );
         let result = solve(&config).unwrap_or_else(|e| {
@@ -421,15 +439,18 @@ mod tests {
 
     #[test]
     fn test_wire_with_input_limits() {
-        let game_db = get_test_game_db_with_recipes(&[
-            "Recipe_IngotIron_C",
-            "Recipe_IngotCopper_C",
-            "Recipe_IngotCaterium_C",
-            "Recipe_Wire_C",
-            "Recipe_Alternate_FusedWire_C",
-            "Recipe_Alternate_Wire_1_C", // Iron Wire
-            "Recipe_Alternate_Wire_2_C", // Caterium Wire
-        ]);
+        let game_db = Arc::new(get_test_game_db());
+        let enabled_recipes: Vec<Arc<crate::game::Recipe>> = game_db
+            .recipes
+            .iter()
+            .filter(|r| {
+                !r.alternate
+                    || r.key == "Recipe_Alternate_FusedWire_C"
+                    || r.key == "Recipe_Alternate_Wire_1_C"
+                    || r.key == "Recipe_Alternate_Wire_2_C"
+            })
+            .cloned()
+            .collect();
 
         let expected_graph = graph_builder!(
             Graph(game_db) {
@@ -467,9 +488,10 @@ mod tests {
                     "Desc_OreIron_C": 12.5,
                     "Desc_OreCopper_C": 12.0
                 },
-                production: {
+                outputs: {
                     "Desc_Wire_C": 232.5
-                }
+                },
+                enabled_recipes: enabled_recipes
             }
         );
 
@@ -481,11 +503,17 @@ mod tests {
 
     #[test]
     fn test_fuel_and_plastic() {
-        let game_db = get_test_game_db_with_recipes(&[
-            "Recipe_Alternate_HeavyOilResidue_C",
-            "Recipe_ResidualFuel_C",
-            "Recipe_ResidualPlastic_C",
-        ]);
+        let game_db = Arc::new(get_test_game_db());
+        let enabled_recipes: Vec<Arc<crate::game::Recipe>> = game_db
+            .recipes
+            .iter()
+            .filter(|r| {
+                r.key == "Recipe_Alternate_HeavyOilResidue_C"
+                    || r.key == "Recipe_ResidualFuel_C"
+                    || r.key == "Recipe_ResidualPlastic_C"
+            })
+            .cloned()
+            .collect();
 
         let expected_graph = graph_builder!(
             Graph(game_db) {
@@ -515,10 +543,11 @@ mod tests {
             PlanConfig {
                 game_db: game_db,
                 inputs: {},
-                production: {
+                outputs: {
                     "Desc_LiquidFuel_C": 180.0,
                     "Desc_Plastic_C": 30.0
-                }
+                },
+                enabled_recipes: enabled_recipes
             }
         );
         let result = solve(&config).unwrap_or_else(|e| {
@@ -529,10 +558,17 @@ mod tests {
 
     #[test]
     pub fn test_diluted_packaged_fuel() {
-        let game_db = get_game_db_with_base_recipes_plus(&[
-            "Recipe_Alternate_HeavyOilResidue_C",
-            "Recipe_Alternate_DilutedPackagedFuel_C",
-        ]);
+        let game_db = Arc::new(get_test_game_db());
+        let enabled_recipes: Vec<Arc<crate::game::Recipe>> = game_db
+            .recipes
+            .iter()
+            .filter(|r| {
+                !r.alternate
+                    || r.key == "Recipe_Alternate_HeavyOilResidue_C"
+                    || r.key == "Recipe_Alternate_DilutedPackagedFuel_C"
+            })
+            .cloned()
+            .collect();
 
         let expected_graph = graph_builder!(
             Graph(game_db) {
@@ -571,10 +607,11 @@ mod tests {
             PlanConfig {
                 game_db: game_db,
                 inputs: {},
-                production: {
+                outputs: {
                     "Desc_LiquidFuel_C": 120.0,
                     "Desc_Fuel_C": 20.0
-                }
+                },
+                enabled_recipes: enabled_recipes
             }
         );
         let result = solve(&config).unwrap_or_else(|e| {
@@ -585,12 +622,19 @@ mod tests {
 
     #[test]
     fn test_recycled_rubber_plastic_loop() {
-        let game_db = get_game_db_with_base_recipes_plus(&[
-            "Recipe_Alternate_HeavyOilResidue_C",
-            "Recipe_Alternate_DilutedFuel_C",
-            "Recipe_Alternate_Plastic_1_C",
-            "Recipe_Alternate_RecycledRubber_C",
-        ]);
+        let game_db = Arc::new(get_test_game_db());
+        let enabled_recipes: Vec<Arc<crate::game::Recipe>> = game_db
+            .recipes
+            .iter()
+            .filter(|r| {
+                !r.alternate
+                    || r.key == "Recipe_Alternate_HeavyOilResidue_C"
+                    || r.key == "Recipe_Alternate_DilutedFuel_C"
+                    || r.key == "Recipe_Alternate_Plastic_1_C"
+                    || r.key == "Recipe_Alternate_RecycledRubber_C"
+            })
+            .cloned()
+            .collect();
 
         let expected_graph = graph_builder!(
             Graph(game_db) {
@@ -626,13 +670,13 @@ mod tests {
             PlanConfig {
                 game_db: game_db,
                 inputs: {},
-                production: {
+                outputs: {
                     "Desc_Plastic_C": 300.0,
                     "Desc_Rubber_C": 300.0
-                }
+                },
+                enabled_recipes: enabled_recipes
             }
         );
-        
 
         let result = solve(&config).unwrap_or_else(|e| {
             panic!("Failed to solve plan: {}", e);
@@ -642,12 +686,19 @@ mod tests {
 
     #[test]
     fn test_ficsmas() {
-        let game_db = get_game_db_with_base_recipes_plus(&[
-            "Recipe_XmasBall1_C",
-            "Recipe_XmasBall2_C",
-            "Recipe_XmasBall3_C",
-            "Recipe_XmasBall4_C",
-        ]);
+        let game_db = Arc::new(get_test_game_db());
+        let enabled_recipes: Vec<Arc<crate::game::Recipe>> = game_db
+            .recipes
+            .iter()
+            .filter(|r| {
+                !r.alternate
+                    || r.key == "Recipe_XmasBall1_C"
+                    || r.key == "Recipe_XmasBall2_C"
+                    || r.key == "Recipe_XmasBall3_C"
+                    || r.key == "Recipe_XmasBall4_C"
+            })
+            .cloned()
+            .collect();
 
         let expected_graph = graph_builder!(
             Graph(game_db) {
@@ -683,10 +734,11 @@ mod tests {
             PlanConfig {
                 game_db: game_db,
                 inputs: {},
-                production: {
+                outputs: {
                     "Desc_XmasBall3_C": 10.0,
                     "Desc_XmasBall4_C": 10.0
-                }
+                },
+                enabled_recipes: enabled_recipes
             }
         );
         let result = solve(&config).unwrap_or_else(|e| {

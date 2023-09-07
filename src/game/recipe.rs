@@ -1,10 +1,10 @@
-use super::{ItemAmountDefinition, Building, Item, ItemPerMinute};
+use super::{Building, Item, ItemAmountDefinition, ItemPerMinute};
 use crate::utils::FloatType;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
     hash::{Hash, Hasher},
-    rc::Rc,
+    sync::Arc,
 };
 
 #[derive(Debug, Default, Copy, Clone, Serialize, Deserialize, PartialEq)]
@@ -38,7 +38,7 @@ pub struct Recipe {
     pub inputs: Vec<ItemPerMinute>,
     pub craft_time_secs: FloatType,
     pub events: Vec<String>,
-    pub building: Rc<Building>,
+    pub building: Arc<Building>,
     pub power: RecipePower,
 }
 

@@ -12,7 +12,8 @@ use petgraph::{
     visit::EdgeRef,
     Direction::{Incoming, Outgoing},
 };
-use std::{collections::HashMap, fmt, rc::Rc};
+use serde::{ser::SerializeStruct, Serialize};
+use std::{collections::HashMap, fmt, sync::Arc};
 
 pub type SolvedGraph = StableDiGraph<SolvedNodeWeight, ItemPerMinute>;
 
@@ -21,33 +22,33 @@ pub enum SolvedNodeWeight {
     Input(ItemPerMinute),
     Output(ItemPerMinute),
     ByProduct(ItemPerMinute),
-    Production(Rc<Recipe>, FloatType),
-    Producer(Rc<Building>, FloatType),
+    Production(Arc<Recipe>, FloatType),
+    Producer(Arc<Building>, FloatType),
 }
 
 impl SolvedNodeWeight {
     #[inline]
-    pub fn new_input(item: Rc<Item>, amount: FloatType) -> Self {
+    pub fn new_input(item: Arc<Item>, amount: FloatType) -> Self {
         Self::Input(ItemPerMinute::new(item, amount))
     }
 
     #[inline]
-    pub fn new_output(item: Rc<Item>, amount: FloatType) -> Self {
+    pub fn new_output(item: Arc<Item>, amount: FloatType) -> Self {
         Self::Output(ItemPerMinute::new(item, amount))
     }
 
     #[inline]
-    pub fn new_by_product(item: Rc<Item>, amount: FloatType) -> Self {
+    pub fn new_by_product(item: Arc<Item>, amount: FloatType) -> Self {
         Self::ByProduct(ItemPerMinute::new(item, amount))
     }
 
     #[inline]
-    pub fn new_production(recipe: Rc<Recipe>, building_count: FloatType) -> Self {
+    pub fn new_production(recipe: Arc<Recipe>, building_count: FloatType) -> Self {
         Self::Production(recipe, building_count)
     }
 
     #[inline]
-    pub fn new_producer(recipe: Rc<Building>, building_count: FloatType) -> Self {
+    pub fn new_producer(recipe: Arc<Building>, building_count: FloatType) -> Self {
         Self::Producer(recipe, building_count)
     }
 }
@@ -81,6 +82,48 @@ impl NodeWeight for SolvedNodeWeight {
     #[inline]
     fn is_producer(&self) -> bool {
         matches!(self, Self::Producer(..))
+    }
+}
+
+impl Serialize for SolvedNodeWeight {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            SolvedNodeWeight::Input(input) => {
+                let mut struct_ser = serializer.serialize_struct("Input", 2)?;
+                struct_ser.serialize_field("type", "input")?;
+                struct_ser.serialize_field("input", input)?;
+                struct_ser.end()
+            }
+            SolvedNodeWeight::Output(output) => {
+                let mut struct_ser = serializer.serialize_struct("Output", 2)?;
+                struct_ser.serialize_field("type", "input")?;
+                struct_ser.serialize_field("output", output)?;
+                struct_ser.end()
+            }
+            SolvedNodeWeight::ByProduct(by_product) => {
+                let mut struct_ser = serializer.serialize_struct("ByProduct", 2)?;
+                struct_ser.serialize_field("type", "by_product")?;
+                struct_ser.serialize_field("by_product", by_product)?;
+                struct_ser.end()
+            }
+            SolvedNodeWeight::Production(recipe, building_count) => {
+                let mut struct_ser = serializer.serialize_struct("Production", 3)?;
+                struct_ser.serialize_field("type", "production")?;
+                struct_ser.serialize_field("recipe", &recipe.key)?;
+                struct_ser.serialize_field("building_count", &building_count)?;
+                struct_ser.end()
+            }
+            SolvedNodeWeight::Producer(building, count) => {
+                let mut struct_ser = serializer.serialize_struct("Producer", 3)?;
+                struct_ser.serialize_field("type", "producer")?;
+                struct_ser.serialize_field("building", building.key())?;
+                struct_ser.serialize_field("count", &count)?;
+                struct_ser.end()
+            }
+        }
     }
 }
 
@@ -137,19 +180,19 @@ pub fn copy_solution<S: Solution>(
 
         let new_idx = match &full_graph[i] {
             PlanNodeWeight::Input(item) => {
-                solved_graph.add_node(SolvedNodeWeight::new_input(Rc::clone(item), solution))
+                solved_graph.add_node(SolvedNodeWeight::new_input(Arc::clone(item), solution))
             }
             PlanNodeWeight::Output(item) => {
-                solved_graph.add_node(SolvedNodeWeight::new_output(Rc::clone(item), solution))
+                solved_graph.add_node(SolvedNodeWeight::new_output(Arc::clone(item), solution))
             }
             PlanNodeWeight::ByProduct(item) => {
-                solved_graph.add_node(SolvedNodeWeight::new_by_product(Rc::clone(item), solution))
+                solved_graph.add_node(SolvedNodeWeight::new_by_product(Arc::clone(item), solution))
             }
             PlanNodeWeight::Production(recipe, _) => solved_graph.add_node(
-                SolvedNodeWeight::new_production(Rc::clone(recipe), solution),
+                SolvedNodeWeight::new_production(Arc::clone(recipe), solution),
             ),
             PlanNodeWeight::Producer(building) => solved_graph.add_node(
-                SolvedNodeWeight::new_producer(Rc::clone(building), solution),
+                SolvedNodeWeight::new_producer(Arc::clone(building), solution),
             ),
         };
 
@@ -168,7 +211,7 @@ pub fn copy_solution<S: Solution>(
         let new_source = *node_mapping.get(&source).unwrap();
         let new_target = *node_mapping.get(&target).unwrap();
 
-        let weight = ItemPerMinute::new(Rc::clone(&full_graph[e]), solution);
+        let weight = ItemPerMinute::new(Arc::clone(&full_graph[e]), solution);
         solved_graph.add_edge(new_source, new_target, weight);
     }
 
