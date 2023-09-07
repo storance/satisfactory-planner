@@ -1,4 +1,4 @@
-use super::{ItemPerMinute, ItemId, BuildingId, GameDatabase, item_value_pairs::ItemKeyAmountPair};
+use super::{item_value_pairs::ItemKeyAmountPair, BuildingId, GameDatabase, ItemId, ItemPerMinute};
 use crate::utils::FloatType;
 use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};

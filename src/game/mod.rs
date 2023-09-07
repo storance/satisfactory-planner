@@ -8,14 +8,16 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs::File, ops::Index, path::Path};
 use thiserror::Error;
 
-pub use building::{Building, Dimensions, PowerConsumption, Fuel, ItemProducer, PowerGenerator, ResourceExtractor, ResourceWell};
-pub use item::{Item, ItemState};
-pub use item_value_pairs::{ItemPerMinute, ItemKeyAmountPair};
-pub use recipe::Recipe;
 use self::building::BuildingDefinition;
+pub use building::{
+    Building, Dimensions, Fuel, ItemProducer, PowerConsumption, PowerGenerator, ResourceExtractor,
+    ResourceWell,
+};
+pub use item::{Item, ItemState};
+pub use item_value_pairs::{ItemKeyAmountPair, ItemPerMinute};
+pub use recipe::Recipe;
 
 use crate::utils::FloatType;
-
 
 #[derive(Error, Debug, Eq, PartialEq)]
 pub enum GameDatabaseError {
@@ -260,7 +262,7 @@ impl GameDatabase {
         items
             .iter()
             .position(|i| i.key == item_key)
-            .map(|i| ItemId(i))
+            .map(ItemId)
             .ok_or(GameDatabaseError::UnknownItemKey(item_key.into()))
     }
 
@@ -272,7 +274,7 @@ impl GameDatabase {
         buildings
             .iter()
             .position(|b| b.key() == building_key)
-            .map(|i| BuildingId(i))
+            .map(BuildingId)
             .ok_or(GameDatabaseError::UnknownBuildingKey(building_key.into()))
     }
 
@@ -288,7 +290,7 @@ impl GameDatabase {
         self.items
             .iter()
             .position(|i| i.name.eq_ignore_ascii_case(name_or_key) || i.key == name_or_key)
-            .map(|i| ItemId(i))
+            .map(ItemId)
     }
 
     #[inline]

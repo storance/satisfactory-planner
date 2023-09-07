@@ -1,5 +1,5 @@
-use actix_web::{ResponseError, http::header::ContentType, HttpResponse};
-use serde::{Serialize, Deserialize};
+use actix_web::{http::header::ContentType, HttpResponse, ResponseError};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 mod config;
@@ -25,7 +25,7 @@ pub enum PlanError {
     #[error("The input for item `{0}` must be greater than or equal to zero.")]
     InvalidInputAmount(String),
     #[error("Unable to solve the given factory plan.  This can be caused by missing inputs, insufficient resources, or disabled recipes.")]
-    UnsolvablePlan
+    UnsolvablePlan,
 }
 
 impl PlanError {
@@ -37,14 +37,15 @@ impl PlanError {
             PlanError::InvalidOutputAmount(_) => "InvalidOutputAmount",
             PlanError::InvalidInputAmount(_) => "InvalidInputAmount",
             PlanError::UnsolvablePlan => "UnsolvablePlan",
-        }.into()
+        }
+        .into()
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorResponse {
     pub error_code: String,
-    pub message: String
+    pub message: String,
 }
 
 impl ResponseError for PlanError {
@@ -55,7 +56,7 @@ impl ResponseError for PlanError {
     fn error_response(&self) -> HttpResponse {
         let error_response = ErrorResponse {
             error_code: self.error_code(),
-            message: self.to_string()
+            message: self.to_string(),
         };
 
         HttpResponse::build(self.status_code())

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{ItemId, Item};
+use super::{Item, ItemId};
 use crate::utils::{FloatType, EPSILON};
 use std::cmp::Ordering;
 use std::ops::{Add, AddAssign, Neg, Sub, SubAssign};

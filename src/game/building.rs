@@ -2,12 +2,12 @@ use core::panic;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
-    hash::{Hash, Hasher}
+    hash::{Hash, Hasher},
 };
 
 use crate::utils::FloatType;
 
-use super::{ItemPerMinute, Recipe, ItemId, item_value_pairs::ItemKeyAmountPair};
+use super::{item_value_pairs::ItemKeyAmountPair, ItemId, ItemPerMinute, Recipe};
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]

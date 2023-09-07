@@ -362,10 +362,10 @@ mod tests {
             "Desc_IronIngot_C": 65.0
         });
         let config = PlanConfig {
-            game_db: game_db,
+            game_db,
             inputs,
             outputs,
-            enabled_recipes: enabled_recipes,
+            enabled_recipes,
         };
 
         let result = solve(&config).unwrap_or_else(|e| {
@@ -733,7 +733,7 @@ mod tests {
                 });
 
             assert!(
-                item_amount_equals(&actual[actual_edge], &edge.weight()),
+                item_amount_equals(&actual[actual_edge], edge.weight()),
                 "Mismatched weight for the edge connecting {:?} to {:?}. Expected: {:?}, actual: {:?}",
                 expected[edge.source()],
                 expected[edge.target()],

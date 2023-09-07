@@ -1,13 +1,15 @@
-use std::sync::Arc;
-use actix_files::{NamedFile, Files};
+use actix_files::{Files, NamedFile};
 use actix_web::body::BoxBody;
 use actix_web::http::header::ContentType;
-use actix_web::{HttpServer, Result, App, web, HttpResponse, Responder, get, post, HttpRequest};
+use actix_web::{get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder, Result};
 use petgraph::visit::NodeIndexable;
 use serde::Serialize;
+use std::sync::Arc;
 
 use crate::game::{GameDatabase, ItemKeyAmountPair};
-use crate::plan::{solve, PlanConfig, PlanConfigDefinition, SolvedGraph, SolvedNodeWeight, PlanError};
+use crate::plan::{
+    solve, PlanConfig, PlanConfigDefinition, PlanError, SolvedGraph, SolvedNodeWeight,
+};
 
 mod game;
 mod plan;
@@ -15,20 +17,20 @@ mod utils;
 
 #[derive(Debug, Clone)]
 pub struct State {
-    pub game_db: Arc<GameDatabase>
+    pub game_db: Arc<GameDatabase>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SolvedEdge {
     pub from: usize,
     pub to: usize,
-    pub weight: ItemKeyAmountPair
+    pub weight: ItemKeyAmountPair,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct GraphResponse {
     nodes: Vec<SolvedNodeWeight>,
-    edges: Vec<SolvedEdge>
+    edges: Vec<SolvedEdge>,
 }
 
 impl From<SolvedGraph> for GraphResponse {
@@ -50,14 +52,11 @@ impl From<SolvedGraph> for GraphResponse {
             edges.push(SolvedEdge {
                 from,
                 to,
-                weight: value[e].clone()
-             });
+                weight: value[e].clone(),
+            });
         }
 
-        Self {
-            nodes,
-            edges
-        }
+        Self { nodes, edges }
     }
 }
 
