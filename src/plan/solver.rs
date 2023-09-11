@@ -426,9 +426,7 @@ mod tests {
     #[test]
     fn test_reinforced_iron_plates_with_provided_inputs() {
         let game_db = Arc::new(get_test_game_db());
-        let enabled_recipes: Vec<RecipeId> = game_db.filter_recipes(|r| {
-            !r.alternate
-        });
+        let enabled_recipes: Vec<RecipeId> = game_db.filter_recipes(|r| !r.alternate);
 
         let expected_graph = graph_builder!(
             Graph(game_db) {
