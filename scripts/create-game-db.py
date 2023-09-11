@@ -76,109 +76,109 @@ RECIPES_FORCE_ALTERNATE = [
 
 BUILDING_SIZES = {
     'Desc_SmelterMk1_C': {
-        'width_m':  6,
-        'length_m': 9,
-        'height_m':  9,
+        'widthM':  6,
+        'lengthM': 9,
+        'heightM':  9,
     },
     'Desc_ConstructorMk1_C': {
-        'width_m':  7.9,
-        'length_m': 9.9,
-        'height_m':  8,
+        'widthM':  7.9,
+        'lengthM': 9.9,
+        'heightM':  8,
     },
     'Desc_AssemblerMk1_C': {
-        'width_m':  10,
-        'length_m': 15,
-        'height_m':  11,
+        'widthM':  10,
+        'lengthM': 15,
+        'heightM':  11,
     },
     'Desc_FoundryMk1_C': {
-        'width_m':  10,
-        'length_m': 9,
-        'height_m':  9,
+        'widthM':  10,
+        'lengthM': 9,
+        'heightM':  9,
     },
     'Desc_ManufacturerMk1_C': {
-        'width_m':  18,
-        'length_m': 20,
-        'height_m':  12,
+        'widthM':  18,
+        'lengthM': 20,
+        'heightM':  12,
     },
     'Desc_OilRefinery_C': {
-        'width_m':  10,
-        'length_m': 20,
-        'height_m':  31,
+        'widthM':  10,
+        'lengthM': 20,
+        'heightM':  31,
     },
     'Desc_Packager_C': {
-        'width_m':  8,
-        'length_m': 8,
-        'height_m':  12,
+        'widthM':  8,
+        'lengthM': 8,
+        'heightM':  12,
     },
     'Desc_Blender_C': {
-        'width_m':  18,
-        'length_m': 16,
-        'height_m':  15,
+        'widthM':  18,
+        'lengthM': 16,
+        'heightM':  15,
     },
     'Desc_HadronCollider_C': {
-        'width_m':  24,
-        'length_m': 38,
-        'height_m':  32,
+        'widthM':  24,
+        'lengthM': 38,
+        'heightM':  32,
     },
     'Desc_TreeGiftProducer_C': {
-        'width_m':  8,
-        'length_m': 8,
-        'height_m':  18,
+        'widthM':  8,
+        'lengthM': 8,
+        'heightM':  18,
     },
     'Desc_GeneratorBiomass_C': {
-        'width_m':  8,
-        'length_m': 8,
-        'height_m':  7,
+        'widthM':  8,
+        'lengthM': 8,
+        'heightM':  7,
     },
     'Desc_GeneratorCoal_C': {
-        'width_m':  10,
-        'length_m': 26,
-        'height_m': 36,
+        'widthM':  10,
+        'lengthM': 26,
+        'heightM': 36,
     },
     'Desc_GeneratorFuel_C': {
-        'width_m':  20,
-        'length_m': 20,
-        'height_m': 27,
+        'widthM':  20,
+        'lengthM': 20,
+        'heightM': 27,
     },
     'Desc_GeneratorNuclear_C': {
-        'width_m':  36,
-        'length_m': 43,
-        'height_m': 49,
+        'widthM':  36,
+        'lengthM': 43,
+        'heightM': 49,
     },
     'Desc_MinerMk1_C': {
-        'width_m':  6,
-        'length_m': 14,
-        'height_m': 18,
+        'widthM':  6,
+        'lengthM': 14,
+        'heightM': 18,
     },
     'Desc_MinerMk2_C': {
-        'width_m':  6,
-        'length_m': 14,
-        'height_m': 18,
+        'widthM':  6,
+        'lengthM': 14,
+        'heightM': 18,
     },
     'Desc_MinerMk3_C': {
-        'width_m':  6,
-        'length_m': 14,
-        'height_m': 18,
+        'widthM':  6,
+        'lengthM': 14,
+        'heightM': 18,
     },
     'Desc_OilPump_C': {
-        'width_m':  8,
-        'length_m': 14,
-        'height_m': 20,
+        'widthM':  8,
+        'lengthM': 14,
+        'heightM': 20,
     },
     'Desc_FrackingSmasher_C': {
-        'width_m':  20,
-        'length_m': 20,
-        'height_m': 23,
+        'widthM':  20,
+        'lengthM': 20,
+        'heightM': 23,
     },
     'Desc_FrackingExtractor_C': {
-        'width_m':  4,
-        'length_m': 4,
-        'height_m': 5,
+        'widthM':  4,
+        'lengthM': 4,
+        'heightM': 5,
     },
     'Desc_WaterPump_C': {
-        'width_m':  20,
-        'length_m': 19.5,
-        'height_m': 26,
+        'widthM':  20,
+        'lengthM': 19.5,
+        'heightM': 26,
     },
 }
 
@@ -230,8 +230,8 @@ def parse_item(native_class, definition, game_db):
         'name': definition['mDisplayName'],
         'resource': resource,
         'state': state,
-        'sink_points': 0 if fluid else int(definition['mResourceSinkPoints']),
-        'energy_mj': energy
+        'sinkPoints': 0 if fluid else int(definition['mResourceSinkPoints']),
+        'energyMJ': energy
     }
     game_db['items'].append(item)
 
@@ -244,7 +244,7 @@ def parse_manufacturer_building(definition, game_db):
         'type': 'manufacturer',
         'key': building_key,
         'name': definition['mDisplayName'],
-        'power_consumption': parse_power_consumption(definition),
+        'powerConsumption': parse_power_consumption(definition),
         'dimensions': BUILDING_SIZES.get(building_key)
     })
 
@@ -252,14 +252,14 @@ def parse_power_consumption(definition):
     if 'mEstimatedMininumPowerConsumption' in definition:
         return {
             'type':  'variable',
-            'min_mw':  int(float(definition['mEstimatedMininumPowerConsumption'])),
-            'max_mw':  int(float(definition['mEstimatedMaximumPowerConsumption'])),
+            'minMW':  int(float(definition['mEstimatedMininumPowerConsumption'])),
+            'maxMW':  int(float(definition['mEstimatedMaximumPowerConsumption'])),
             'exponent': float(definition['mPowerConsumptionExponent'])
         }
     else:
         return {
             'type': 'fixed',
-            'value_mw':  int(float(definition['mPowerConsumption'])),
+            'valueMW':  int(float(definition['mPowerConsumption'])),
             'exponent': float(definition['mPowerConsumptionExponent'])
         }
 
@@ -272,7 +272,7 @@ def parse_power_generator(definition, game_db):
         'key': building_key,
         'name': definition['mDisplayName'],
         'fuels': parse_fuels(definition['mFuel'], supplemental_ratio, power_production, game_db),
-        'power_production_mw': power_production,
+        'powerProductionMW': power_production,
         'dimensions': BUILDING_SIZES.get(building_key)
     })
 
@@ -282,9 +282,9 @@ def parse_item_producer(definition, game_db):
         'type': 'item_producer',
         'key': building_key,
         'name': definition['mDisplayName'],
-        'craft_time_secs': float(definition['mTimeToProduceItem']),
+        'craftTimeSecs': float(definition['mTimeToProduceItem']),
         'output': ITEM_PRODUCER_OUTPUTS[building_key],
-        'power_consumption': parse_power_consumption(definition),
+        'powerConsumption': parse_power_consumption(definition),
         'dimensions': BUILDING_SIZES.get(building_key)
     })
 
@@ -311,10 +311,10 @@ def parse_resource_extractor(definition, game_db):
         'type': 'resource_extractor',
         'key': building_key,
         'name': definition['mDisplayName'],
-        'extraction_rate': amount * 60.0 / extraction_cycle_time,
-        'extractor_type': extractor_type,
-        'allowed_resources': allowed_resources,
-        'power_consumption': parse_power_consumption(definition),
+        'extractionRate': amount * 60.0 / extraction_cycle_time,
+        'extractorType': extractor_type,
+        'allowedResources': allowed_resources,
+        'powerConsumption': parse_power_consumption(definition),
         'dimensions': BUILDING_SIZES.get(building_key)
     })
 
@@ -336,10 +336,10 @@ def parse_resource_well(definition, game_db):
         'type': 'resource_well',
         'key': building_key,
         'name': definition['mDisplayName'],
-        'allowed_resources': allowed_resources,
-        'extractor_type': extractor_type,
-        'satellite_buildings': [],
-        'power_consumption': parse_power_consumption(definition),
+        'allowedResources': allowed_resources,
+        'extractorType': extractor_type,
+        'satelliteBuildings': [],
+        'powerConsumption': parse_power_consumption(definition),
         'dimensions': BUILDING_SIZES.get(building_key)
     })
 
@@ -355,11 +355,11 @@ def parse_resource_well_extractor(definition, game_db):
     parent = next((b for b in game_db['buildings'] if b['key'] == 'Desc_FrackingSmasher_C'), None)
     if parent is None:
         raise ValueError('Could not find parent building Desc_FrackingSmasher_C')
-    parent['satellite_buildings'].append({
+    parent['satelliteBuildings'].append({
         'key': building_key,
         'name': definition['mDisplayName'],
-        'extraction_rate': amount * 60.0 / extraction_cycle_time,
-        'power_consumption': parse_power_consumption(definition),
+        'extractionRate': amount * 60.0 / extraction_cycle_time,
+        'powerConsumption': parse_power_consumption(definition),
         'dimensions': BUILDING_SIZES.get(building_key)
     })
 
@@ -410,7 +410,7 @@ def build_fuel(fuel_item,
                supplemental_ratio,
                power_production,
                game_db):
-    if fuel_item['energy_mj'] == 0:
+    if fuel_item['energyMJ'] == 0:
         return None
 
     fuel = {
@@ -418,16 +418,16 @@ def build_fuel(fuel_item,
             'item': fuel_item['key'],
             'amount': 1
         },
-        'burn_time_secs': fuel_item['energy_mj'] / power_production
+        'burnTimeSecs': fuel_item['energyMJ'] / power_production
     }
 
     if supplemental_item_key not in [None, ""]:
         supplemental_item = find_item(game_db, supplemental_item_key)
-        amount = fuel_item['energy_mj'] * supplemental_ratio
+        amount = fuel_item['energyMJ'] * supplemental_ratio
         if supplemental_item['state'] != 'solid':
             amount /= 1000.0
 
-        fuel['supplemental_item'] = {
+        fuel['supplemental'] = {
             'item': supplemental_item_key,
             'amount': amount
         }
@@ -438,7 +438,7 @@ def build_fuel(fuel_item,
         if by_product_item['state'] != 'solid':
             amount /= 1000.0
 
-        fuel['by_product'] = {
+        fuel['byProduct'] = {
             'item': by_product_item_key,
             'amount': float(by_product_amount)
         }
@@ -474,12 +474,12 @@ def parse_recipe(definition, game_db):
         'alternate': alternate,
         'inputs': parse_item_list(definition['mIngredients'], game_db),
         'outputs': parse_item_list(definition['mProduct'], game_db),
-        'craft_time_secs': craft_time_secs,
+        'craftTimeSecs': craft_time_secs,
         'events': parse_events(definition['mRelevantEvents']),
         'building': produces_in[0],
-        'power_consumption': {
-            'min_mw': power_constant,
-            'max_mw': power_constant + power_factor
+        'powerConsumption': {
+            'minMW': power_constant,
+            'maxMW': power_constant + power_factor
         }
     })
 
@@ -538,8 +538,8 @@ def prune_unused_items(game_db):
                 used_items.add(fuel['fuel']['item'])
                 if 'supplemental' in fuel:
                     used_items.add(fuel['supplemental']['item'])
-                if 'by_product' in fuel:
-                    used_items.add(fuel['by_product']['item'])
+                if 'byProduct' in fuel:
+                    used_items.add(fuel['byProduct']['item'])
 
     for recipe in game_db['recipes']:
         used_items.update([input['item'] for input in recipe['inputs']])
@@ -560,7 +560,7 @@ def main():
 
     args = parser.parse_args()
     game_db = {
-        'by_product_blacklist': [
+        'byProductBlacklist': [
             'Desc_FluidCanister_C',
             'Desc_GasTank_C'
         ],
@@ -568,7 +568,7 @@ def main():
         'biomass': [],
         'buildings': [],
         'recipes': [],
-        'resource_limits': RESOURCE_MAP_LIMITS
+        'resourceLimits': RESOURCE_MAP_LIMITS
     }
     encoding = detect_encoding(args.docs_file)
     with open(args.docs_file, encoding=encoding) as df:

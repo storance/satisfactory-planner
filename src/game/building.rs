@@ -13,10 +13,16 @@ use super::{item_value_pairs::ItemKeyAmountPair, ItemId, ItemPerMinute, Recipe};
 #[serde(tag = "type")]
 pub enum PowerConsumption {
     #[serde(rename = "fixed")]
-    Fixed { value_mw: u32, exponent: FloatType },
+    Fixed {
+        #[serde(rename = "valueMW")]
+        value_mw: u32,
+        exponent: FloatType,
+    },
     #[serde(rename = "variable")]
     Variable {
+        #[serde(rename = "minMW")]
         min_mw: u32,
+        #[serde(rename = "maxMW")]
         max_mw: u32,
         exponent: FloatType,
     },
@@ -24,8 +30,11 @@ pub enum PowerConsumption {
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Dimensions {
+    #[serde(rename = "lengthM")]
     pub length_m: FloatType,
+    #[serde(rename = "widthM")]
     pub width_m: FloatType,
+    #[serde(rename = "heightM")]
     pub height_m: FloatType,
 }
 
@@ -33,6 +42,7 @@ pub struct Dimensions {
 pub struct Manufacturer {
     pub key: String,
     pub name: String,
+    #[serde(rename = "powerConsumption")]
     pub power_consumption: PowerConsumption,
     #[serde(default)]
     pub dimensions: Option<Dimensions>,
@@ -43,8 +53,9 @@ pub(super) struct FuelDefinition {
     pub fuel: ItemKeyAmountPair,
     #[serde(default)]
     pub supplemental: Option<ItemKeyAmountPair>,
-    #[serde(default)]
+    #[serde(default, rename = "byProduct")]
     pub by_product: Option<ItemKeyAmountPair>,
+    #[serde(rename = "burnTimeSecs")]
     pub burn_time_secs: FloatType,
 }
 
@@ -60,6 +71,7 @@ pub struct Fuel {
 pub(super) struct PowerGeneratorDefinition {
     pub key: String,
     pub name: String,
+    #[serde(rename = "powerProductionMW")]
     pub power_production_mw: u32,
     pub fuels: Vec<FuelDefinition>,
     #[serde(default)]
@@ -79,9 +91,13 @@ pub struct PowerGenerator {
 pub(super) struct ResourceExtractorDefinition {
     pub key: String,
     pub name: String,
+    #[serde(rename = "powerConsumption")]
     pub power_consumption: PowerConsumption,
+    #[serde(rename = "extractionRate")]
     pub extraction_rate: FloatType,
+    #[serde(rename = "allowedResources")]
     pub allowed_resources: Vec<String>,
+    #[serde(default, rename = "extractorType")]
     pub extractor_type: Option<String>,
     #[serde(default)]
     pub dimensions: Option<Dimensions>,
@@ -102,7 +118,9 @@ pub struct ResourceExtractor {
 pub struct ResourceWellExtractor {
     pub key: String,
     pub name: String,
+    #[serde(rename = "extractionRate")]
     pub extraction_rate: FloatType,
+    #[serde(rename = "powerConsumption")]
     pub power_consumption: PowerConsumption,
     pub dimensions: Option<Dimensions>,
 }
@@ -111,9 +129,13 @@ pub struct ResourceWellExtractor {
 pub struct ResourceWellDefinition {
     pub key: String,
     pub name: String,
+    #[serde(rename = "powerConsumption")]
     pub power_consumption: PowerConsumption,
+    #[serde(rename = "allowedResources")]
     pub allowed_resources: Vec<String>,
+    #[serde(rename = "satelliteBuildings")]
     pub satellite_buildings: Vec<ResourceWellExtractor>,
+    #[serde(default, rename = "extractorType")]
     pub extractor_type: Option<String>,
     pub dimensions: Option<Dimensions>,
 }
@@ -133,7 +155,9 @@ pub struct ResourceWell {
 pub struct ItemProducerDefinition {
     pub key: String,
     pub name: String,
+    #[serde(rename = "powerConsumption")]
     pub power_consumption: PowerConsumption,
+    #[serde(rename = "craftTimeSecs")]
     pub craft_time_secs: FloatType,
     pub output: ItemKeyAmountPair,
     pub dimensions: Option<Dimensions>,

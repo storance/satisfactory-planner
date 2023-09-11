@@ -48,10 +48,12 @@ pub struct BuildingId(usize);
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GameDatabaseDefinition {
+    #[serde(rename = "byProductBlacklist")]
     by_product_blacklist: Vec<String>,
     items: Vec<Item>,
     buildings: Vec<BuildingDefinition>,
     recipes: Vec<RecipeDefinition>,
+    #[serde(rename = "resourceLimits")]
     resource_limits: HashMap<String, FloatType>,
 }
 

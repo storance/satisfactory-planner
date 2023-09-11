@@ -5,7 +5,9 @@ use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Default, Copy, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RecipePower {
+    #[serde(rename = "minMW")]
     pub min_mw: FloatType,
+    #[serde(rename = "maxMW")]
     pub max_mw: FloatType,
 }
 
@@ -17,6 +19,7 @@ pub(super) struct RecipeDefinition {
     pub alternate: bool,
     pub outputs: Vec<ItemKeyAmountPair>,
     pub inputs: Vec<ItemKeyAmountPair>,
+    #[serde(rename = "craftTimeSecs")]
     pub craft_time_secs: FloatType,
     #[serde(default)]
     pub events: Vec<String>,

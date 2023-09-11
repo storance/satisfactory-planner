@@ -20,7 +20,9 @@ pub struct Item {
     pub name: String,
     pub resource: bool,
     pub state: ItemState,
+    #[serde(rename = "energyMJ")]
     pub energy_mj: u32,
+    #[serde(rename = "sinkPoints")]
     pub sink_points: u32,
 }
 

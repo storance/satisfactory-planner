@@ -1,4 +1,4 @@
-import { createSignal, onMount } from 'solid-js'
+import { createSignal, onMount, For, Index } from 'solid-js'
 import { parse_game_db, GameDatabase } from './game';
 import solidLogo from './assets/solid.svg'
 import viteLogo from '/vite.svg'
@@ -15,6 +15,11 @@ function App() {
 
   return (
     <>
+      <ul>
+        <For each={Array.from(gameDB().recipes.values())}>{(item, i) =>
+          <li>{item.name}</li>
+        }</For>
+      </ul>
       <div>
         <a href="https://vitejs.dev" target="_blank">
           <img src={viteLogo} class="logo" alt="Vite logo" />

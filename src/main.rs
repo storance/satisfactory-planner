@@ -1,7 +1,8 @@
 use actix_files::{Files, NamedFile};
 use actix_web::body::BoxBody;
 use actix_web::http::header::ContentType;
-use actix_web::{get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder, Result};
+use actix_web::{get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder, Result, middleware::Logger};
+use actix_cors::Cors;
 use petgraph::visit::NodeIndexable;
 use serde::Serialize;
 use std::sync::Arc;
@@ -78,13 +79,20 @@ async fn main() -> std::io::Result<()> {
     }));
     let state = web::Data::new(State { game_db });
 
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+
     HttpServer::new(move || {
+        // TODO: Disable when running in production mode
+        let cors = Cors::permissive();
+
         App::new()
             .app_data(state.clone())
             .service(index)
             .service(Files::new("/assets", "./assets"))
             .service(get_database)
             .service(create_plan)
+            .wrap(cors)
+            .wrap(Logger::new("%a \"%r\" %s - %T"))
     })
     .bind(("127.0.0.1", 8080))?
     .run()
