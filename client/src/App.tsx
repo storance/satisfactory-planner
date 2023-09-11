@@ -1,10 +1,17 @@
-import { createSignal } from 'solid-js'
+import { createSignal, onMount } from 'solid-js'
+import { parse_game_db, GameDatabase } from './game';
 import solidLogo from './assets/solid.svg'
 import viteLogo from '/vite.svg'
 import './App.css'
 
 function App() {
-  const [count, setCount] = createSignal(0)
+  const [count, setCount] = createSignal(0);
+  const [gameDB, setGameDB] = createSignal(new GameDatabase(new Map(), new Map(), new Map(), new Map()));
+
+  onMount(async () => {
+    const res = await fetch(import.meta.env.VITE_API_URL + "api/1/database");
+    setGameDB(parse_game_db(await res.json()));
+  });
 
   return (
     <>

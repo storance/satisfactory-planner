@@ -1,10 +1,10 @@
-enum ItemState {
-    Solid,
-    Liquid,
-    Gas
+export enum ItemState {
+    Solid = "solid",
+    Liquid = "liquid",
+    Gas = "gas"
 }
 
-class ItemPerMinute {
+export class ItemPerMinute {
     item: string;
     amount: number;
 
@@ -14,7 +14,7 @@ class ItemPerMinute {
     }
 }
 
-class Item {
+export class Item {
     key: string;
     name: string;
     resource: boolean;
@@ -32,12 +32,12 @@ class Item {
     }
 }
 
-enum PowerConsumptionType {
-    Fixed,
-    Variable
+export enum PowerConsumptionType {
+    Fixed = "fixed",
+    Variable = "variable"
 }
 
-class FixedPowerConsumption {
+export class FixedPowerConsumption {
     type = PowerConsumptionType.Fixed as const;
     valueMW: number;
     exponent: number;
@@ -48,7 +48,7 @@ class FixedPowerConsumption {
     }
 }
 
-class VariablePowerConsumption {
+export class VariablePowerConsumption {
     type = PowerConsumptionType.Variable as const;
     minMW: number;
     maxMW: number;
@@ -61,9 +61,9 @@ class VariablePowerConsumption {
     }
 }
 
-type PowerConsumption = FixedPowerConsumption | VariablePowerConsumption;
+export type PowerConsumption = FixedPowerConsumption | VariablePowerConsumption;
 
-class Dimensions {
+export class Dimensions {
     lengthM: number;
     widthM: number;
     heightM: number;
@@ -76,7 +76,7 @@ class Dimensions {
     }
 }
 
-class Manufacturer {
+export class Manufacturer {
     type = BuildingType.Manufacturer as const;
     key: string;
     name: string;
@@ -91,7 +91,7 @@ class Manufacturer {
     }
 }
 
-class Fuel {
+export class Fuel {
     fuel: ItemPerMinute;
     supplemental: ItemPerMinute;
     byProduct: ItemPerMinute;
@@ -105,7 +105,7 @@ class Fuel {
     }
 }
 
-class PowerGenerator {
+export class PowerGenerator {
     type = BuildingType.PowerGenerator as const;
     key: string;
     name: string;
@@ -122,7 +122,7 @@ class PowerGenerator {
     }
 }
 
-class ItemProducer {
+export class ItemProducer {
     type = BuildingType.ItemProducer as const;
     key: string;
     name: string;
@@ -146,7 +146,7 @@ class ItemProducer {
     }
 }
 
-class ResourceExtractor {
+export class ResourceExtractor {
     type = BuildingType.ResourceExtractor as const;
     key: string;
     name: string;
@@ -173,7 +173,7 @@ class ResourceExtractor {
     }
 }
 
-class ResourceWellExtractor {
+export class ResourceWellExtractor {
     key: string;
     name: string;
     powerConsumption: PowerConsumption;
@@ -193,7 +193,7 @@ class ResourceWellExtractor {
     }
 }
 
-class ResourceWell {
+export class ResourceWell {
     type = BuildingType.ResourceWell as const;
     key: string;
     name: string;
@@ -220,17 +220,17 @@ class ResourceWell {
     }
 }
 
-type Building = Manufacturer | PowerGenerator | ItemProducer | ResourceExtractor | ResourceWell;
+export type Building = Manufacturer | PowerGenerator | ItemProducer | ResourceExtractor | ResourceWell;
 
-enum BuildingType {
-    Manufacturer,
-    PowerGenerator,
-    ResourceExtractor,
-    ResourceWell,
-    ItemProducer
+export enum BuildingType {
+    Manufacturer = "manufacturer",
+    PowerGenerator = "power_generator",
+    ResourceExtractor = "resource_extractor",
+    ResourceWell = "resource_well",
+    ItemProducer = "item_producer"
 }
 
-class RecipePower {
+export class RecipePower {
     minMW: number;
     maxMW: number;
 
@@ -240,7 +240,7 @@ class RecipePower {
     }
 }
 
-class Recipe {
+export class Recipe {
     key: string;
     name: string;
     alternate: boolean;
@@ -272,7 +272,7 @@ class Recipe {
     }
 }
 
-class GameDatabase {
+export class GameDatabase {
     items: Map<string, Item>;
     buildings: Map<string, Building>;
     recipes: Map<string, Recipe>;
@@ -284,4 +284,24 @@ class GameDatabase {
         this.recipes = recipes;
         this.resourceLimits = resourceLimits;
     }
+}
+
+export function parse_game_db(json: {items: Item[], buildings: Building[], recipes: Recipe[], resourceLimits: Map<string, number>}): GameDatabase {
+    let items = new Map();
+    let buildings = new Map();
+    let recipes = new Map();
+
+    for (var item of json['items']) {
+        items.set(item.key, item);
+    }
+
+    for (var building of json['buildings']) {
+        buildings.set(building.key, building);
+    }
+
+    for (var recipe of json['recipes']) {
+        recipes.set(recipe.key, recipe);
+    }
+
+    return new GameDatabase(items, buildings, recipes, json.resourceLimits);
 }
