@@ -524,6 +524,11 @@
     "@types/babel__generator" "^7.6.4"
     "@types/babel__traverse" "^7.18.5"
 
+"@thisbeyond/solid-dnd@^0.7.4":
+  version "0.7.4"
+  resolved "https://registry.yarnpkg.com/@thisbeyond/solid-dnd/-/solid-dnd-0.7.4.tgz#c6291e6a33d2f23d09867c1a427dce8113190f09"
+  integrity sha512-jgV9EtR3gAtVsILG8p1OAGrhHIgnK4W04YxpyLgJRCDKEFYQWuDrMdUe8F5Kc6pcVXlC4IMXr4cB8fS2Ut3/Ow==
+
 "@thisbeyond/solid-select@^0.14.0":
   version "0.14.0"
   resolved "https://registry.yarnpkg.com/@thisbeyond/solid-select/-/solid-select-0.14.0.tgz#1f6ed9e2c54818a13943624f4a66e32d5c933062"
