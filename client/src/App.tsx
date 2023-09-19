@@ -1,47 +1,49 @@
-import { createSignal, onMount, For, Index } from 'solid-js'
-import { parse_game_db, GameDatabase } from './game';
-import solidLogo from './assets/solid.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { For } from "solid-js";
+import { Container, Nav, Navbar, Tab, Tabs } from "solid-bootstrap";
+import { AiFillFolderAdd } from "solid-icons/ai";
+import { useFactories } from "./FactoriesContext";
+import { FactoryState } from './FactoriesContext';
+import { useGameDatabase } from "./GameDatabaseContext";
+import Factory from "./Factory";
 
-function App() {
-  const [count, setCount] = createSignal(0);
-  const [gameDB, setGameDB] = createSignal(new GameDatabase(new Map(), new Map(), new Map(), new Map()));
+export default function App() {
+    const [factoryState, actions] = useFactories();
+    const [gameDB] = useGameDatabase();
 
-  onMount(async () => {
-    const res = await fetch(import.meta.env.VITE_API_URL + "api/1/database");
-    setGameDB(parse_game_db(await res.json()));
-  });
+    const updateActiveFactory = (eventKey: string | null) => {
+        if (eventKey === "add") {
+            actions.addFactory(FactoryState.default(gameDB));
+        } else if (eventKey !== null) {
+            actions.updateActiveFactoryId(eventKey);
+        }
+    };
 
-  return (
-    <>
-      <ul>
-        <For each={Array.from(gameDB().recipes.values())}>{(item, i) =>
-          <li>{item.name}</li>
-        }</For>
-      </ul>
-      <div>
-        <a href="https://vitejs.dev" target="_blank">
-          <img src={viteLogo} class="logo" alt="Vite logo" />
-        </a>
-        <a href="https://solidjs.com" target="_blank">
-          <img src={solidLogo} class="logo solid" alt="Solid logo" />
-        </a>
-      </div>
-      <h1>Vite + Solid</h1>
-      <div class="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count()}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p class="read-the-docs">
-        Click on the Vite and Solid logos to learn more
-      </p>
-    </>
-  )
+    return (
+        <>
+            <Container fluid="xl">
+                <Navbar expand="lg" class="bg-dark navbar-dark">
+                    <Container>
+                        <Navbar.Brand href="#home">Satisfactory Planner</Navbar.Brand>
+                        <Navbar.Toggle aria-controls="basic-navbar-nav" />
+                        <Navbar.Collapse id="basic-navbar-nav">
+                            <Nav class="me-auto">
+                                <Nav.Link href="#">Home</Nav.Link>
+                            </Nav>
+                        </Navbar.Collapse>
+                    </Container>
+                </Navbar>
+                <Tabs
+                    activeKey={factoryState.activeFactoryId}
+                    onSelect={updateActiveFactory}
+                >
+                    <For each={factoryState.factories}>{(factory, index) => (
+                        <Tab eventKey={factory.id} title={factory.name}>
+                            <Factory factoryIndex={index()} factory={factory} />
+                        </Tab>
+                    )}</For>
+                    <Tab eventKey={"add"} title={<AiFillFolderAdd />}></Tab>
+                </Tabs>
+            </Container>
+        </>
+    )
 }
-
-export default App

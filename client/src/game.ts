@@ -152,16 +152,16 @@ export class ResourceExtractor {
     name: string;
     powerConsumption: PowerConsumption;
     extractionRate: number;
-    allowedResources: [string];
-    extractorType: string;
+    allowedResources: string[];
+    extractorType: string | null;
     dimensions: Dimensions;
 
     constructor(key: string,
         name: string,
         powerConsumption: PowerConsumption,
         extractionRate: number,
-        allowedResources: [string],
-        extractorType: string,
+        allowedResources: string[],
+        extractorType: string | null,
         dimensions: Dimensions) {
         this.key = key;
         this.name = name;
@@ -198,17 +198,17 @@ export class ResourceWell {
     key: string;
     name: string;
     powerConsumption: PowerConsumption;
-    allowedResources: [string];
-    satelliteBuildings: [ResourceWellExtractor]
-    extractorType: string;
+    allowedResources: string[];
+    satelliteBuildings: ResourceWellExtractor[]
+    extractorType: string | null;
     dimensions: Dimensions;
 
     constructor(key: string,
         name: string,
         powerConsumption: PowerConsumption,
-        allowedResources: [string],
-        satelliteBuildings: [ResourceWellExtractor],
-        extractorType: string,
+        allowedResources: string[],
+        satelliteBuildings: ResourceWellExtractor[],
+        extractorType: string | null,
         dimensions: Dimensions) {
         this.key = key;
         this.name = name;
@@ -244,21 +244,21 @@ export class Recipe {
     key: string;
     name: string;
     alternate: boolean;
-    inputs: [ItemPerMinute];
-    outputs: [ItemPerMinute];
+    inputs: ItemPerMinute[];
+    outputs: ItemPerMinute[];
     craftTimeSecs: number;
     building: Manufacturer;
-    events: [string];
+    events: string[];
     power: RecipePower;
 
     constructor(key: string,
         name: string,
         alternate: boolean,
-        inputs: [ItemPerMinute],
-        outputs: [ItemPerMinute],
+        inputs: ItemPerMinute[],
+        outputs: ItemPerMinute[],
         craftTimeSecs: number,
         building: Manufacturer,
-        events: [string],
+        events: string[],
         power: RecipePower) {
         this.key = key;
         this.name = name;
@@ -276,32 +276,35 @@ export class GameDatabase {
     items: Map<string, Item>;
     buildings: Map<string, Building>;
     recipes: Map<string, Recipe>;
-    resourceLimits: Map<String, number>;
+    resourceLimits: Map<string, number>;
 
-    constructor(items: Map<string, Item>, buildings: Map<string, Building>, recipes: Map<string, Recipe>, resourceLimits: Map<String, number>) {
+    constructor(items: Map<string, Item>,
+        buildings: Map<string, Building>,
+        recipes: Map<string, Recipe>,
+        resourceLimits: Map<string, number>) {
         this.items = items;
         this.buildings = buildings;
         this.recipes = recipes;
         this.resourceLimits = resourceLimits;
     }
-}
 
-export function parse_game_db(json: {items: Item[], buildings: Building[], recipes: Recipe[], resourceLimits: Map<string, number>}): GameDatabase {
-    let items = new Map();
-    let buildings = new Map();
-    let recipes = new Map();
+    static fromJson(json: { items: Item[], buildings: Building[], recipes: Recipe[], resourceLimits: object }): GameDatabase {
+        let items = new Map();
+        let buildings = new Map();
+        let recipes = new Map();
 
-    for (var item of json['items']) {
-        items.set(item.key, item);
+        for (var item of json['items']) {
+            items.set(item.key, item);
+        }
+
+        for (var building of json['buildings']) {
+            buildings.set(building.key, building);
+        }
+
+        for (var recipe of json['recipes']) {
+            recipes.set(recipe.key, recipe);
+        }
+
+        return new GameDatabase(items, buildings, recipes, new Map<string, number>(Object.entries(json.resourceLimits)));
     }
-
-    for (var building of json['buildings']) {
-        buildings.set(building.key, building);
-    }
-
-    for (var recipe of json['recipes']) {
-        recipes.set(recipe.key, recipe);
-    }
-
-    return new GameDatabase(items, buildings, recipes, json.resourceLimits);
 }

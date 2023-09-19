@@ -1,9 +1,9 @@
 import { defineConfig } from 'vite'
 import solid from 'vite-plugin-solid'
-import suid from '@suid/vite-plugin';
+import eslint from 'vite-plugin-eslint';
 
 export default defineConfig({
-  plugins: [solid(), suid()],
+  plugins: [solid(), eslint()],
   build: {
     target: "esnext"
   }
